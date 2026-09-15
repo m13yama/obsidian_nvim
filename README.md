@@ -1,10 +1,14 @@
 # Neovim for Obsidian
 
+**0.0.1 — Beta**
+
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
 ## Install
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Neovim 0.12.5 is tested locally. Mobile is not supported.
+
+For the beta, download `main.js`, `manifest.json`, and `styles.css` from the [0.0.1 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.1), then follow steps 2–5 below. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
