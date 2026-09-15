@@ -1,0 +1,39 @@
+.neovim-status {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.neovim-command-line {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--layer-notice, 1000);
+  max-width: min(90vw, 1000px);
+  min-width: 240px;
+  padding: 8px 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-s);
+  font-family: var(--font-monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.neovim-command-line[hidden] {
+  display: none;
+}
+
+.neovim-connected.cm-focused .neovim-block-cursor {
+  background: var(--text-normal);
+  color: var(--background-primary);
+  border-radius: 1px;
+}
+
+.neovim-connected[data-neovim-mode="normal"] .cm-cursor {
+  border-left-width: 2px;
+}
