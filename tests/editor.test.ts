@@ -28,6 +28,75 @@ function editorDOM(): JSDOM {
   return dom;
 }
 
+test("zz centers the real Neovim cursor in CodeMirror, including counts, repeats, and Visual mode", async (t) => {
+  const dom = editorDOM();
+  const { window } = dom;
+  const errors: Error[] = [];
+  let status = "";
+  const centered: number[] = [];
+  const controller = new EditorController({
+    status: (value) => { status = value; }, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
+  });
+  const text = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
+  const view = new EditorView({
+    parent: window.document.body,
+    state: EditorState.create({ doc: text, extensions: [
+      neovimExtension(controller, { name: () => "scroll.md", save: async () => {} }),
+      EditorView.scrollHandler.of((_view, range, options) => {
+        if (options.y === "center") centered.push(range.head);
+        return true;
+      }),
+    ] }),
+  });
+  t.after(() => { controller.stop(); view.destroy(); window.close(); });
+  // jsdom has no layout; give CodeMirror a viewport so it flushes scroll requests.
+  Object.defineProperty(view.scrollDOM, "clientHeight", { value: 400 });
+  const key = (value: string) => view.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", {
+    key: value, bubbles: true, cancelable: true,
+  }));
+  const keys = (values: string) => { for (const value of values) key(value); };
+  view.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  await waitFor(() => status === "NORMAL", "normal mode");
+  keys("50G");
+  await waitFor(() => view.state.selection.main.head === view.state.doc.line(50).from, "cursor on line 50");
+  key("z");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual(centered, [], "a single z remains a pending Vim command");
+  key("z");
+  await waitFor(() => centered.length === 1, "zz reaches CodeMirror's center scroll handler");
+  assert.equal(centered[0], view.state.doc.line(50).from);
+  keys("zz");
+  await waitFor(() => centered.length === 2, "zz works again without moving the cursor");
+  assert.equal(centered[1], centered[0]);
+  keys("70zz");
+  await waitFor(() => centered.length === 3, "counted zz centers the destination line");
+  assert.equal(centered[2], view.state.doc.line(70).from);
+  assert.equal(view.state.selection.main.head, centered[2]);
+  keys("vj");
+  await waitFor(() => status === "VISUAL" && !view.state.selection.main.empty, "visual selection");
+  const selection = view.state.selection.main;
+  keys("zz");
+  await waitFor(() => centered.length === 4, "Visual zz centers the cursor");
+  assert.equal(centered[3], view.state.doc.line(71).from);
+  assert.ok(view.state.selection.main.eq(selection), "centering preserves the visual selection");
+  assert.equal(status, "VISUAL");
+  assert.equal(view.state.doc.toString(), text, "scrolling never changes note text");
+  key("Escape");
+  await waitFor(() => status === "NORMAL", "leave visual mode");
+  keys("qazzq");
+  await waitFor(() => centered.length === 5, "record a zz macro");
+  keys("@a");
+  await waitFor(() => centered.length === 6, "macro playback centers the cursor");
+  key("i");
+  await waitFor(() => status === "INSERT", "insert mode");
+  keys("zz");
+  key("Escape");
+  await waitFor(() => status === "NORMAL" && view.state.doc.line(71).text === "zzline 71", "insert zz stays literal text");
+  assert.equal(centered.length, 6);
+  assert.deepEqual(errors, []);
+});
+
 test("resizing between navigation keys does not block the next key", async (t) => {
   const errors: Error[] = [];
   let direction = "";

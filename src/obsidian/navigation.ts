@@ -10,6 +10,7 @@ interface ScopeOverride {
 
 const DIRECTIONS: Record<string, NavigationDirection> = { h: "left", j: "down", k: "up", l: "right", p: "editor" };
 const TREE_KEYS: Record<string, string> = { j: "ArrowDown", k: "ArrowUp", h: "ArrowLeft", l: "ArrowRight" };
+const READING_SCROLL_STEP = 40;
 
 /** View scopes run before Obsidian's application shortcuts, and below modal scopes. */
 export class WorkspaceNavigation {
@@ -118,7 +119,11 @@ export class WorkspaceNavigation {
   private handle(view: View, event: KeyboardEvent): false | undefined {
     if (!this.ready() || event.defaultPrevented) return;
     if (this.router.handle(event)) return false;
-    if (!this.navigationEnabled() || !this.isSidebar(view.leaf) || event.isComposing || event.keyCode === 229) return;
+    if (event.isComposing || event.keyCode === 229) return;
+    if (view.getViewType() === "markdown" && (view as MarkdownView).getMode() === "preview") {
+      return this.scrollReadingView(view as MarkdownView, event);
+    }
+    if (!this.navigationEnabled() || !this.isSidebar(view.leaf)) return;
     const target = event.target as HTMLElement | null;
     // Obsidian's ArrowDown handler blurs the tree container. Subsequent keys
     // target body, while the sidebar leaf and its keyboard scope remain active.
@@ -145,6 +150,17 @@ export class WorkspaceNavigation {
     }
   }
 
+  private scrollReadingView(view: MarkdownView, event: KeyboardEvent): false | undefined {
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || (event.key !== "j" && event.key !== "k")) return;
+    const target = event.target as HTMLElement | null;
+    const preview = view.previewMode.containerEl;
+    const bodyInActiveView = target === preview.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
+    if (!target || (!preview.contains(target) && target !== view.containerEl && !bodyInActiveView) ||
+      target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")) return;
+    preview.scrollBy({ top: event.key === "j" ? READING_SCROLL_STEP : -READING_SCROLL_STEP, behavior: "instant" });
+    return false;
+  }
+
   private async focusLeaf(leaf: WorkspaceLeaf): Promise<void> {
     if (this.disposed) return;
     if (this.app.workspace.activeLeaf?.view.getViewType() === "markdown") this.lastEditor = this.app.workspace.activeLeaf;
@@ -154,11 +170,13 @@ export class WorkspaceNavigation {
     this.prefix = undefined;
     this.refresh();
     const view = leaf.view;
-    if (view.getViewType() === "markdown") {
-      (view as MarkdownView).editor.focus();
+    const markdown = view.getViewType() === "markdown" ? view as MarkdownView : undefined;
+    if (markdown && markdown.getMode() !== "preview") {
+      markdown.editor.focus();
       return;
     }
-    const target = view.containerEl.querySelector<HTMLElement>(".nav-files-container, [role=tree]") ?? view.containerEl;
+    const target = markdown?.previewMode.containerEl ??
+      view.containerEl.querySelector<HTMLElement>(".nav-files-container, [role=tree]") ?? view.containerEl;
     if (!target.hasAttribute("tabindex")) {
       if (!this.tabIndexes.has(target)) this.tabIndexes.set(target, null);
       target.tabIndex = -1;

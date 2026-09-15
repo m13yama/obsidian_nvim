@@ -85,6 +85,8 @@ Editor shortcuts are handled through Obsidian's view scopes, before application 
 
 Other Ctrl keys go to Neovim. To avoid a collision with a Vim Ctrl command, assign your Obsidian command a Ctrl+Shift shortcut. In Normal mode, paste from a Vim register with `p`/`P`, use the context-menu Paste action, or enter Insert mode for native `Ctrl+V`. `Ctrl+C` remains copy; use `Esc` or `Ctrl+[` to leave Insert mode.
 
+In editing view, `zz` centers the cursor line in Obsidian's editor in Normal and Visual modes. A count such as `50zz` moves to that line and centers it. Existing custom `zz` mappings take priority.
+
 ### Blockwise selection
 
 `Ctrl+V` highlights the selected columns in purple. The range follows Neovim's selection, including reverse selections, Japanese text, emoji, combining characters, partial tabs, and the `selection` option. Virtual space on empty or short lines is highlighted when `virtualedit` allows it. Wrapped text is highlighted on each rendered line.
@@ -94,6 +96,10 @@ The highlight is a separate visual layer that does not add text or change the br
 ![Blockwise selection in dark and light themes](docs/block-selection-preview.png)
 
 This preview uses selections captured from a real Neovim process and rendered by the actual CodeMirror component.
+
+### Reading view
+
+With Neovim running, press `j` to scroll down or `k` to scroll up in Markdown reading view. Hold either key to keep scrolling. These keys work independently of the pane and sidebar navigation setting. Search fields, note titles, embedded editable controls, and dialogs keep their normal input behavior.
 
 ### Pane and sidebar navigation
 
@@ -165,7 +171,7 @@ The plugin integrates Neovim editing with Obsidian. UI and plugin compatibility 
 - All ordinary typing, including insert-mode typing, goes through Neovim. Obsidian autocomplete, automatic bracket insertion, and other plugins’ key handlers may behave differently. Conflicting Obsidian shortcuts may need to be unbound.
 - Use Obsidian to open, switch, and close notes. Your configured plugins load, but Neovim window/tab layouts, terminal buffers, floating windows, Telescope, completion menus, and `:edit`/`:split`/`:buffer` navigation are not integrated. Some plugins skip managed `acwrite` buffers or require file-read events that these virtual notes do not emit; loading a plugin does not guarantee it can attach to a note.
 - Characterwise, linewise, and blockwise Visual selections are displayed. Live Preview can hide Markdown syntax that has no visible text to highlight. Mouse selection is synchronized as a cursor position; use `v`/`V`/`Ctrl+V` for visual editing.
-- `j`/`k` operate on document lines. The Neovim window size is estimated from the editor, so wrapped-line motions, folds, and scrolling do not exactly match Obsidian’s Live Preview layout.
+- In editing view, `j`/`k` operate on document lines. The Neovim window size is estimated from the editor, so wrapped-line motions, folds, and scrolling do not exactly match Obsidian’s Live Preview layout.
 - Clipboard shortcuts depend on the mode; see the shortcut table above. Cmd shortcuts stay with Obsidian. Vim registers are separate from native clipboard operations.
 - IME composition is left to CodeMirror and synchronized after composition commits. Japanese IME, dead-key layouts, and pop-out windows need manual verification in Obsidian. The command-line display currently lives in the main window.
 - Changes synchronize as one minimal text replacement. Large notes are not optimized yet. If a separate plugin edits a note while Neovim input is still in flight, the newer host revision takes priority; this can discard the pending Neovim edit. Split panes for the same note rely on Obsidian propagating changes between editors.
@@ -211,6 +217,7 @@ Use a scratch note for the first desktop test:
 7. Check the cursor on Japanese text, emoji, empty lines, and line ends in light/dark themes. Switch panes, use IME, and toggle Neovim to check caret restoration.
 8. Use `Ctrl+V`, `j`, `l` on a scratch note and verify that the highlighted columns follow the selection; delete with `d` and undo with `u`. Repeat across Japanese text, tabs, and empty lines. Verify native `Ctrl+V` still pastes in Insert mode, and `Ctrl+E` still switches editing/reading views. Check save, copy, quick switcher, and command palette shortcuts too.
 9. Use `Ctrl+W h` to focus Files, navigate with `h/j/k/l`, open a note with `Enter`, and return with `Esc`. Check that renaming/search fields and dialogs accept ordinary typing.
+10. Switch a long note to reading view with `Ctrl+E`. Use `j` / `k`, including holding either key, to scroll down / up. Check that search fields and dialogs accept ordinary typing, then switch back to editing and verify normal Vim motions. In editing view, use `zz` and `50zz` to center the cursor line; repeat after scrolling with the mouse and in Visual mode.
 
 ### API references
 

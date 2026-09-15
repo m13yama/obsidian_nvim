@@ -141,6 +141,33 @@ vim.keymap.set('i', 'jj', '<Esc>')
   await waitFor(() => text === "configured configured!" && state?.mode === "n", "insert mapping");
 });
 
+test("custom global and Markdown buffer zz mappings take priority over centering", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "obsidian-neovim-scroll-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const bufferLocal of [false, true]) {
+    const initPath = join(directory, bufferLocal ? "buffer.lua" : "global.lua");
+    const mapping = `vim.keymap.set({ 'n', 'x' }, 'zz', 'l', { buffer = ${bufferLocal} })`;
+    await writeFile(initPath, bufferLocal
+      ? `vim.api.nvim_create_autocmd('FileType', { pattern = 'markdown', callback = function() ${mapping} end })`
+      : mapping);
+    let state: NeovimState | undefined;
+    let centers = 0;
+    const session = new NeovimSession({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: true, initPath }, {
+      state: (value) => { state = value; if (value.scroll === "center") centers++; },
+      commandLine: () => {}, message: () => {}, write: () => {}, exit: () => {},
+    });
+    try {
+      await session.start();
+      await session.activate({ id: 1, revision: 0, text: "note", cursor: [1, 0], name: "scroll.md" });
+      await session.input("zz");
+      await waitFor(() => state?.cursor[1] === 1, "custom Normal zz mapping");
+      await session.input("vzz");
+      await waitFor(() => state?.mode === "v" && state.cursor[1] === 2, "custom Visual zz mapping");
+      assert.equal(centers, 0, "custom zz mappings do not force centering");
+    } finally { session.dispose(); }
+  }
+});
+
 test("pane mappings notify Obsidian while preserving user mappings and supporting opt-out", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "obsidian-neovim-navigation-"));
   const initPath = join(directory, "init.lua");

@@ -121,6 +121,7 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
           const end = Math.min(doc.length, last.to + 1);
           selection = head >= anchor ? EditorSelection.range(first.from, end) : EditorSelection.range(end, first.from);
         }
+        const cursorMoved = head !== this.cursorHead;
         this.mode = state.mode;
         this.cursorHead = head;
         this.blockRows = state.blockSelection ?? [];
@@ -128,7 +129,9 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
           changes: change,
           selection: EditorSelection.create([selection]),
           annotations: [fromNeovim.of(true), Transaction.addToHistory.of(false)],
-          scrollIntoView: this.view.hasFocus,
+          effects: this.view.hasFocus && state.scroll === "center" ? EditorView.scrollIntoView(head, { y: "center" }) : [],
+          // Repeated status notifications must not replace a pending zz scroll.
+          scrollIntoView: this.view.hasFocus && (!!change || cursorMoved),
         });
       });
     }

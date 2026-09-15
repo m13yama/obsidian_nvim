@@ -30,6 +30,7 @@ export interface NeovimState {
   lineCount: number;
   screenColumn: number;
   recording: string;
+  scroll?: "center";
   blockSelection?: BlockSelectionRow[];
 }
 
@@ -129,6 +130,7 @@ export class NeovimSession {
         }], 30000),
       ]);
       await rpc.request("nvim_exec_lua", [BRIDGE_LUA, [channel]]);
+      await this.lua("setup_scrolling", []);
       if (this.options.navigation) await this.lua("setup_navigation", []);
     } catch (error) {
       rpc.dispose();

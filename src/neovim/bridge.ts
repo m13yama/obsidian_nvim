@@ -28,7 +28,20 @@ function M.setup_navigation()
   end
 end
 
-function M.emit()
+function M.setup_scrolling()
+  for _, mode in ipairs({ 'n', 'x' }) do
+    if vim.fn.maparg('zz', mode) == '' then
+      vim.keymap.set(mode, 'zz', function()
+        local count = vim.v.count > 0 and tostring(vim.v.count) or ''
+        vim.cmd('normal! ' .. count .. 'zz')
+        -- zz can leave both text and cursor unchanged, so emit explicitly.
+        M.emit('center')
+      end, { silent = true, desc = 'Obsidian: center cursor line' })
+    end
+  end
+end
+
+function M.emit(scroll)
   M.pending = false
   local buf = api.nvim_get_current_buf()
   local entry = M.buffers[buf]
@@ -46,6 +59,7 @@ function M.emit()
     lineCount = api.nvim_buf_line_count(buf),
     screenColumn = screen_column + 1,
     recording = vim.fn.reg_recording(),
+    scroll = scroll,
   }
   if mode == string.char(22) or mode == string.char(19) then
     state.blockSelection = block_selection(anchor, cursor)

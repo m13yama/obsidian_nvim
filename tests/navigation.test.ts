@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
-import type { App, Scope, View, WorkspaceLeaf } from "obsidian";
+import type { App, MarkdownView, Scope, View, WorkspaceLeaf } from "obsidian";
 import { EditorKeyRouter } from "../src/editor/key-router";
 import { WorkspaceNavigation } from "../src/obsidian/navigation";
 
@@ -25,6 +25,86 @@ class TestScope {
     return this.parent?.handle(event);
   }
 }
+
+test("reading view scrolls with j/k and leaves editing, controls, modifiers, and modal scopes alone", (t) => {
+  const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
+  const { window } = dom;
+  const rootScope = new TestScope();
+  let hostKeys = 0;
+  rootScope.register(null, "j", () => { hostKeys++; });
+  let mode = "preview";
+  let ready = true;
+  const scrolls: ScrollToOptions[] = [];
+  const containerEl = window.document.createElement("div");
+  containerEl.innerHTML = '<input aria-label="Search"><div contenteditable="true">Title</div>' +
+    '<div class="markdown-preview-view"><p>Long note</p><input><textarea></textarea><select></select>' +
+    '<div contenteditable="true"><span>Editable</span></div></div>';
+  window.document.body.append(containerEl);
+  const preview = containerEl.querySelector<HTMLElement>(".markdown-preview-view")!;
+  preview.scrollBy = ((options: ScrollToOptions) => { scrolls.push(options); }) as typeof preview.scrollBy;
+  const original = new TestScope(rootScope);
+  const leaf = { view: undefined as unknown as MarkdownView };
+  leaf.view = { leaf, containerEl, scope: original, getViewType: () => "markdown", getMode: () => mode,
+    previewMode: { containerEl: preview } } as unknown as MarkdownView;
+  const otherLeaf = { view: {} };
+  const workspace = {
+    activeLeaf: leaf as typeof leaf | typeof otherLeaf,
+    iterateAllLeaves: (callback: (leaf: unknown) => void) => callback(leaf),
+  };
+  const navigation = new WorkspaceNavigation({ workspace, scope: rootScope } as unknown as App,
+    (parent) => new TestScope(parent as unknown as TestScope) as unknown as Scope,
+    new EditorKeyRouter(), () => ready, () => false, (error) => { throw error; });
+  t.after(() => { navigation.destroy(); window.close(); });
+  navigation.refresh();
+  let modal: TestScope | undefined;
+  window.addEventListener("keydown", (event) => {
+    const scope = modal ?? leaf.view.scope as unknown as TestScope;
+    if (scope.handle(event) === false) { event.preventDefault(); event.stopPropagation(); }
+  }, true);
+  const key = (target: HTMLElement, value: string, options: KeyboardEventInit = {}) => {
+    const event = new window.KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true, ...options });
+    target.dispatchEvent(event);
+    return event;
+  };
+  const paragraph = preview.querySelector("p")!;
+  assert.equal(key(paragraph, "j").defaultPrevented, true);
+  assert.equal(key(paragraph, "j", { repeat: true }).defaultPrevented, true);
+  assert.equal(key(paragraph, "k").defaultPrevented, true);
+  assert.deepEqual(scrolls, [
+    { top: 40, behavior: "instant" }, { top: 40, behavior: "instant" }, { top: -40, behavior: "instant" },
+  ]);
+  assert.equal(hostKeys, 0, "reading shortcuts take priority over application hotkeys");
+  assert.equal(paragraph.textContent, "Long note");
+  assert.equal(key(window.document.body, "j").defaultPrevented, true, "reading works with body focus after a mode switch");
+  assert.equal(key(containerEl, "k").defaultPrevented, true);
+  const handled = scrolls.length;
+  for (const target of containerEl.querySelectorAll<HTMLElement>("input, textarea, select, [contenteditable] span, [contenteditable]")) {
+    for (const value of ["j", "k"]) assert.equal(key(target, value).defaultPrevented, false);
+  }
+  for (const options of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }, { shiftKey: true }, { isComposing: true }, { keyCode: 229 }]) {
+    assert.equal(key(paragraph, "j", options).defaultPrevented, false);
+  }
+  assert.equal(key(paragraph, "x").defaultPrevented, false);
+  const outside = window.document.createElement("button");
+  window.document.body.append(outside);
+  assert.equal(key(outside, "j").defaultPrevented, false);
+  workspace.activeLeaf = otherLeaf;
+  assert.equal(key(window.document.body, "j").defaultPrevented, false, "body focus belongs to the active pane");
+  workspace.activeLeaf = leaf;
+  modal = new TestScope(rootScope);
+  assert.equal(key(paragraph, "j").defaultPrevented, false);
+  modal = undefined;
+  mode = "source";
+  assert.equal(key(paragraph, "j").defaultPrevented, false, "switching back to editing releases reading shortcuts");
+  mode = "preview";
+  ready = false;
+  assert.equal(key(paragraph, "j").defaultPrevented, false);
+  ready = true;
+  navigation.destroy();
+  assert.equal(leaf.view.scope, original);
+  assert.equal(key(paragraph, "j").defaultPrevented, false, "unloading releases reading shortcuts");
+  assert.equal(scrolls.length, handled, "ignored keys never scroll the preview");
+});
 
 test("view scopes prioritize editor keys, navigate native sidebar trees, and restore scopes on unload", async () => {
   const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
@@ -61,6 +141,7 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     }
     const result = { getRoot: () => root, view: undefined as unknown as View } as WorkspaceLeaf;
     result.view = { scope, leaf: result, containerEl, getViewType: () => type,
+      getMode: () => "source",
       editor: { focus: () => containerEl.querySelector<HTMLElement>(".cm-content")!.focus() } } as unknown as View;
     return result;
   };
@@ -155,6 +236,19 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     await settle();
     assert.equal(workspace.activeLeaf, secondEditor, "Escape works after native tree navigation blurs the DOM");
     await navigation.focusEditor();
+    const reading = secondEditor.view as MarkdownView;
+    reading.getMode = () => "preview";
+    const preview = window.document.createElement("div");
+    reading.containerEl.append(preview);
+    reading.previewMode = { containerEl: preview } as unknown as MarkdownView["previewMode"];
+    let readingScrolls = 0;
+    preview.scrollBy = () => { readingScrolls++; };
+    await navigation.focusSidebar("left");
+    key(tree, "Escape");
+    await settle();
+    assert.equal(window.document.activeElement, preview, "returning to a reading pane focuses its preview");
+    assert.equal(key(preview, "j").defaultPrevented, true);
+    assert.equal(readingScrolls, 1);
     workspace.activeLeaf = editor;
     ready = false;
     key(content, "r", { ctrlKey: true });
@@ -162,6 +256,7 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     navigation.destroy();
     leaves.forEach((leaf, index) => assert.equal(leaf.view.scope, originals[index]));
     assert.equal(tree.hasAttribute("tabindex"), false);
+    assert.equal(preview.hasAttribute("tabindex"), false);
     assert.deepEqual(errors, []);
   } finally { unregister(); navigation.destroy(); dom.window.close(); }
 });
