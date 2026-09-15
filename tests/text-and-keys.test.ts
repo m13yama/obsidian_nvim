@@ -35,7 +35,21 @@ test("keyboard notation supports commands, modifiers, literals and native shortc
   assert.equal(toNeovimKey(key("Escape")), "<Esc>");
   assert.equal(toNeovimKey(key("r", { ctrlKey: true })), "<C-r>");
   assert.equal(toNeovimKey(key("Tab", { shiftKey: true })), "<S-Tab>");
-  assert.equal(toNeovimKey(key("v", { ctrlKey: true })), null);
+  assert.equal(toNeovimKey(key("v", { ctrlKey: true })), "<C-v>");
+  assert.equal(toNeovimKey(key("v", { ctrlKey: true }), "i"), null);
+  assert.equal(toNeovimKey(key("v", { ctrlKey: true }), "R"), null);
+  assert.equal(toNeovimKey(key("v", { ctrlKey: true }), "\x16"), "<C-v>");
+  assert.equal(toNeovimKey(key("x", { ctrlKey: true })), "<C-x>");
+  assert.equal(toNeovimKey(key("x", { ctrlKey: true }), "i"), null);
+  assert.equal(toNeovimKey(key("a", { ctrlKey: true })), "<C-a>");
+  assert.equal(toNeovimKey(key("a", { ctrlKey: true }), "i"), null);
+  assert.equal(toNeovimKey(key("f", { ctrlKey: true })), "<C-f>");
+  assert.equal(toNeovimKey(key("f", { ctrlKey: true }), "i"), null);
+  for (const mode of ["n", "i", "v", "\x16", "R"]) {
+    for (const value of ["s", "c", "p", "e"]) assert.equal(toNeovimKey(key(value, { ctrlKey: true }), mode), null);
+  }
+  assert.equal(toNeovimKey(key("v", { ctrlKey: true, shiftKey: true })), null);
+  assert.equal(toNeovimKey(key("ArrowLeft", { altKey: true })), null);
   assert.equal(toNeovimKey(key("c", { metaKey: true })), null);
   assert.equal(toNeovimKey(key("Process", { isComposing: true })), null);
   assert.equal(toNeovimKey(key("@", { ctrlKey: true, altKey: true, getModifierState: () => true })), null);

@@ -5,6 +5,21 @@ import { access, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
+export interface BlockSelectionPoint {
+  /** UTF-8 byte offset of a character, or the end of the line. */
+  byte: number;
+  /** Offset in Neovim screen cells from the start of the character. */
+  offset: number;
+  /** Character width in cells; zero means a position after the line end. */
+  width: number;
+}
+
+export interface BlockSelectionRow {
+  line: number;
+  from: BlockSelectionPoint;
+  to: BlockSelectionPoint;
+}
+
 export interface NeovimState {
   id: number;
   revision: number;
@@ -15,6 +30,7 @@ export interface NeovimState {
   lineCount: number;
   screenColumn: number;
   recording: string;
+  blockSelection?: BlockSelectionRow[];
 }
 
 export interface EditorDocument {
@@ -31,7 +47,10 @@ export interface SessionOptions {
   initPath: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  navigation?: boolean;
 }
+
+export type NavigationDirection = "left" | "right" | "up" | "down" | "editor";
 
 export interface SessionEvents {
   state: (state: NeovimState) => void;
@@ -39,6 +58,7 @@ export interface SessionEvents {
   message: (text: string) => void;
   write: (id: number) => void;
   exit: (error: Error) => void;
+  navigate?: (direction: NavigationDirection) => void;
 }
 
 export class NeovimSession {
@@ -109,6 +129,7 @@ export class NeovimSession {
         }], 30000),
       ]);
       await rpc.request("nvim_exec_lua", [BRIDGE_LUA, [channel]]);
+      if (this.options.navigation) await this.lua("setup_navigation", []);
     } catch (error) {
       rpc.dispose();
       throw error;
@@ -153,7 +174,10 @@ export class NeovimSession {
   }
 
   async resize(width: number, height: number): Promise<void> {
-    await this.request("nvim_ui_try_resize", [Math.max(20, width), Math.max(5, height)]);
+    if (!this.rpc || this.disposed) throw new Error("Neovim is disconnected.");
+    // Neovim can defer resizing while waiting for the rest of a command (e.g.
+    // Ctrl-W h). Waiting for its reply would block that next key in our queue.
+    this.rpc.notify("nvim_ui_try_resize", [Math.max(20, width), Math.max(5, height)]);
   }
 
   async release(id: number): Promise<void> {
@@ -187,6 +211,9 @@ export class NeovimSession {
     if (method === "obsidian:ready") this.startup?.resolve();
     else if (method === "obsidian:state") this.events.state(args[0] as NeovimState);
     else if (method === "obsidian:write") this.events.write(args[0] as number);
+    else if (method === "obsidian:navigate" && ["left", "right", "up", "down", "editor"].includes(String(args[0]))) {
+      this.events.navigate?.(args[0] as NavigationDirection);
+    }
     else if (method === "redraw") this.redraw(args as unknown[][]);
   }
 

@@ -187,12 +187,86 @@ button.neovim-statusline:focus-visible {
   display: none;
 }
 
-.neovim-connected.cm-focused .neovim-block-cursor {
-  background: var(--text-normal);
-  color: var(--background-primary);
-  border-radius: 1px;
+.cm-editor.neovim-connected {
+  --neovim-cursor-color: #9ece6a;
+  --neovim-cursor-ink: #18202f;
 }
 
-.neovim-connected[data-neovim-mode="normal"] .cm-cursor {
-  border-left-width: 2px;
+.theme-light .cm-editor.neovim-connected {
+  --neovim-cursor-color: #386b19;
+  --neovim-cursor-ink: #ffffff;
 }
+
+.neovim-connected[data-neovim-cursor="block"] .neovim-block-cursor {
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px var(--neovim-cursor-color);
+}
+
+.neovim-connected.cm-focused[data-neovim-cursor="block"] .neovim-block-cursor {
+  background: var(--neovim-cursor-color) !important;
+  color: var(--neovim-cursor-ink) !important;
+  box-shadow: 0 0 0 1px var(--neovim-cursor-color);
+}
+
+/* Syntax highlighting may nest spans inside the character under the cursor. */
+.neovim-connected.cm-focused[data-neovim-cursor="block"] .neovim-block-cursor * {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+/* A zero-width widget paints a cell without inserting text or shifting a line. */
+.neovim-block-cursor-empty {
+  display: inline-block;
+  position: relative;
+  width: 0;
+  height: 1em;
+  vertical-align: text-bottom;
+  pointer-events: none;
+  user-select: none;
+}
+
+.neovim-connected[data-neovim-cursor="block"] .neovim-block-cursor-empty::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1ch;
+  height: 100%;
+  border-radius: inherit;
+  background: inherit;
+  box-shadow: inherit;
+}
+
+.neovim-connected.cm-focused[data-neovim-cursor="block"] .neovim-cursor-line {
+  background: color-mix(in srgb, var(--neovim-cursor-color) 7%, transparent);
+}
+
+/* Hide both browser and CodeMirror carets only while the block is displayed. */
+.neovim-connected[data-neovim-cursor="block"] .cm-content,
+.neovim-connected[data-neovim-cursor="block"] .cm-content * {
+  caret-color: transparent !important;
+}
+
+.neovim-connected[data-neovim-cursor="block"] .cm-cursor,
+.neovim-connected[data-neovim-cursor="block"] .cm-cursorLayer {
+  visibility: hidden !important;
+}
+
+.neovim-block-selection-layer {
+  pointer-events: none;
+}
+
+.neovim-block-selection {
+  background: #bb9af7;
+  opacity: 0.32;
+  box-shadow: inset 0 0 0 1px rgb(187 154 247 / 55%);
+}
+
+.theme-light .neovim-block-selection {
+  background: #7850b8;
+  opacity: 0.24;
+}
+
+.neovim-connected:not(.cm-focused) .neovim-block-selection { opacity: 0.16; }
+.cm-editor:not(.neovim-connected) .neovim-block-selection-layer,
+.neovim-composing .neovim-block-selection-layer { visibility: hidden; }

@@ -1,9 +1,11 @@
-import { editorInfoField, FileSystemAdapter, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, type App } from "obsidian";
+import { editorInfoField, FileSystemAdapter, MarkdownView, Notice, Plugin, PluginSettingTab, Scope, Setting, type App } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { EditorController } from "./editor/controller";
 import { neovimExtension } from "./editor/extension";
 import { DEFAULT_SETTINGS, type NeovimSettings, type StatusLineStyle } from "./settings";
 import { NeovimStatusLine } from "./ui/status-line";
+import { EditorKeyRouter } from "./editor/key-router";
+import { WorkspaceNavigation } from "./obsidian/navigation";
 
 export default class NeovimPlugin extends Plugin {
   settings: NeovimSettings = { ...DEFAULT_SETTINGS };
@@ -13,6 +15,8 @@ export default class NeovimPlugin extends Plugin {
   private messageTimer?: ReturnType<typeof setTimeout>;
   private showingCommand = false;
   private unloaded = false;
+  private keyRouter = new EditorKeyRouter();
+  private navigation!: WorkspaceNavigation;
 
   async onload(): Promise<void> {
     this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() };
@@ -35,13 +39,29 @@ export default class NeovimPlugin extends Plugin {
         console.error("Obsidian Neovim:", error);
         new Notice(`Neovim: ${error.message}\nCheck Neovim settings, then run “Restart Neovim”.`, 10000);
       },
+      navigate: (direction) => {
+        if (this.settings.navigation) void this.navigation.navigate(direction).catch((error: unknown) => this.navigationError(error));
+      },
     });
+    this.navigation = new WorkspaceNavigation(this.app, (parent) => new Scope(parent), this.keyRouter,
+      () => this.controller.ready, () => this.settings.navigation, (error) => this.navigationError(error));
+    this.register(() => this.navigation.destroy());
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.navigation.refresh()));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.navigation.refresh()));
     this.registerEditorExtension(neovimExtension(this.controller, {
       name: (view) => view.state.field(editorInfoField, false)?.file?.path ?? this.markdownView(view)?.file?.path ?? "untitled.md",
       save: async (view) => { await this.markdownView(view)?.save(); },
+      registerKeys: (view, handler) => this.keyRouter.register(view.contentDOM, handler),
     }));
     this.addSettingTab(new NeovimSettingTab(this.app, this));
     this.addCommand({ id: "restart", name: "Restart Neovim", callback: () => { void this.restart(); } });
+    for (const side of ["left", "right"] as const) {
+      this.addCommand({ id: `focus-${side}-sidebar`, name: `Focus ${side} sidebar`,
+        callback: () => { void this.navigation.focusSidebar(side).catch((error: unknown) => this.navigationError(error)); } });
+    }
+    this.addCommand({ id: "focus-editor", name: "Focus editor", callback: () => {
+      void this.navigation.focusEditor().catch((error: unknown) => this.navigationError(error));
+    } });
     this.addCommand({
       id: "toggle", name: "Toggle Neovim",
       callback: () => {
@@ -53,6 +73,7 @@ export default class NeovimPlugin extends Plugin {
     });
     this.app.workspace.onLayoutReady(() => {
       if (this.unloaded) return;
+      this.navigation.refresh();
       if (this.settings.enabled) void this.restart();
       else this.controller.stop();
     });
@@ -73,6 +94,7 @@ export default class NeovimPlugin extends Plugin {
       executable: this.settings.executable.trim() || "nvim",
       useConfig: this.settings.useConfig,
       initPath: this.settings.initPath,
+      navigation: this.settings.navigation,
       cwd: adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined,
     });
   }
@@ -81,6 +103,11 @@ export default class NeovimPlugin extends Plugin {
     this.settings.statusLineStyle = style;
     this.statusLine.setStyle(style);
     await this.saveData(this.settings);
+  }
+
+  private navigationError(error: unknown): void {
+    console.error("Obsidian Neovim navigation:", error);
+    new Notice("Neovim could not focus that pane. Check that the sidebar view is enabled.");
   }
 
   private markdownView(editor: EditorView): MarkdownView | undefined {
@@ -118,6 +145,13 @@ class NeovimSettingTab extends PluginSettingTab {
         .addOption("compact", "Compact")
         .setValue(this.plugin.settings.statusLineStyle)
         .onChange(async (value) => { await this.plugin.setStatusLineStyle(value as StatusLineStyle); }));
+    new Setting(this.containerEl)
+      .setName("Vim pane and sidebar navigation")
+      .setDesc("Ctrl+W then h/j/k/l moves between panes and sidebars; p returns to the editor. In the file explorer, h/j/k/l navigate and Esc returns to the note. Existing Neovim mappings take priority. Restart Neovim to apply.")
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.navigation).onChange(async (value) => {
+        this.plugin.settings.navigation = value;
+        await this.plugin.saveData(this.plugin.settings);
+      }));
     new Setting(this.containerEl)
       .setName("Neovim executable")
       .setDesc("Use nvim if it is on Obsidian’s PATH, or the full path to the executable. Do not include command-line arguments.")

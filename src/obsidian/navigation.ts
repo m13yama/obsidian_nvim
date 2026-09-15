@@ -1,0 +1,178 @@
+import type { App, MarkdownView, Scope, View, WorkspaceLeaf } from "obsidian";
+import type { EditorKeyRouter } from "../editor/key-router";
+import type { NavigationDirection } from "../neovim/session";
+
+interface ScopeOverride {
+  scope: Scope;
+  original: Scope | null;
+  handler: ReturnType<Scope["register"]>;
+}
+
+const DIRECTIONS: Record<string, NavigationDirection> = { h: "left", j: "down", k: "up", l: "right", p: "editor" };
+const TREE_KEYS: Record<string, string> = { j: "ArrowDown", k: "ArrowUp", h: "ArrowLeft", l: "ArrowRight" };
+
+/** View scopes run before Obsidian's application shortcuts, and below modal scopes. */
+export class WorkspaceNavigation {
+  private overrides = new Map<View, ScopeOverride>();
+  private tabIndexes = new Map<HTMLElement, string | null>();
+  private lastEditor?: WorkspaceLeaf;
+  private prefix?: { view: View; until: number };
+  private disposed = false;
+
+  constructor(
+    private app: App,
+    private createScope: (parent: Scope) => Scope,
+    private router: EditorKeyRouter,
+    private ready: () => boolean,
+    private navigationEnabled: () => boolean,
+    private onError: (error: unknown) => void,
+  ) {}
+
+  refresh(): void {
+    if (this.disposed) return;
+    const workspace = this.app.workspace;
+    if (workspace.activeLeaf?.view.getViewType() === "markdown") this.lastEditor = workspace.activeLeaf;
+    const views = new Set<View>();
+    workspace.iterateAllLeaves((leaf) => {
+      const view = leaf.view;
+      if (view.getViewType() !== "markdown" && !this.isSidebar(leaf)) return;
+      views.add(view);
+      const previous = this.overrides.get(view);
+      if (previous?.scope === view.scope) return;
+      if (previous) previous.scope.unregister(previous.handler);
+      const original = view.scope;
+      const scope = this.createScope(original ?? this.app.scope);
+      const handler = scope.register(null, null, (event) => this.handle(view, event));
+      view.scope = scope;
+      this.overrides.set(view, { original, scope, handler });
+    });
+    for (const [view, override] of this.overrides) {
+      if (!views.has(view)) this.restore(view, override);
+    }
+  }
+
+  async focusSidebar(side: "left" | "right"): Promise<void> {
+    const workspace = this.app.workspace;
+    const split = side === "left" ? workspace.leftSplit : workspace.rightSplit;
+    const leaf = workspace.getMostRecentLeaf(split);
+    if (leaf) await this.focusLeaf(leaf);
+  }
+
+  async focusEditor(): Promise<void> {
+    const leaves = this.app.workspace.getLeavesOfType("markdown");
+    const leaf = this.lastEditor && leaves.includes(this.lastEditor) ? this.lastEditor : leaves[0];
+    if (leaf) await this.focusLeaf(leaf);
+  }
+
+  async navigate(direction: NavigationDirection): Promise<void> {
+    if (this.disposed) return;
+    if (direction === "editor") return this.focusEditor();
+    const current = this.app.workspace.activeLeaf;
+    if (!current) return;
+    const from = current.view.containerEl.getBoundingClientRect();
+    const horizontal = direction === "left" || direction === "right";
+    const sign = direction === "left" || direction === "up" ? -1 : 1;
+    let nearest: WorkspaceLeaf | undefined;
+    let distance = Infinity;
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const element = leaf.view.containerEl;
+      if (leaf === current || element.ownerDocument !== current.view.containerEl.ownerDocument || !element.getClientRects().length) return;
+      const root = leaf.getRoot();
+      if (this.isSidebar(leaf) && "collapsed" in root && root.collapsed) return;
+      const to = element.getBoundingClientRect();
+      if (!to.width || !to.height) return;
+      const dx = (to.left + to.right - from.left - from.right) / 2;
+      const dy = (to.top + to.bottom - from.top - from.bottom) / 2;
+      const forward = sign * (horizontal ? dx : dy);
+      const across = Math.abs(horizontal ? dy : dx);
+      if (forward <= 1) return;
+      const score = forward + across * 3;
+      if (score < distance) { nearest = leaf; distance = score; }
+    });
+    if (nearest) await this.focusLeaf(nearest);
+    else if (horizontal && !this.isSidebar(current)) await this.focusSidebar(direction === "left" ? "left" : "right");
+  }
+
+  destroy(): void {
+    this.disposed = true;
+    this.prefix = undefined;
+    for (const [view, override] of this.overrides) this.restore(view, override);
+    for (const [element, value] of this.tabIndexes) {
+      if (element.getAttribute("tabindex") !== "-1") continue;
+      if (value === null) element.removeAttribute("tabindex");
+      else element.setAttribute("tabindex", value);
+    }
+    this.tabIndexes.clear();
+  }
+
+  private restore(view: View, override: ScopeOverride): void {
+    override.scope.unregister(override.handler);
+    if (view.scope === override.scope) view.scope = override.original;
+    this.overrides.delete(view);
+  }
+
+  private isSidebar(leaf: WorkspaceLeaf): boolean {
+    return leaf.getRoot() === this.app.workspace.leftSplit || leaf.getRoot() === this.app.workspace.rightSplit;
+  }
+
+  private handle(view: View, event: KeyboardEvent): false | undefined {
+    if (!this.ready() || event.defaultPrevented) return;
+    if (this.router.handle(event)) return false;
+    if (!this.navigationEnabled() || !this.isSidebar(view.leaf) || event.isComposing || event.keyCode === 229) return;
+    const target = event.target as HTMLElement | null;
+    // Obsidian's ArrowDown handler blurs the tree container. Subsequent keys
+    // target body, while the sidebar leaf and its keyboard scope remain active.
+    const bodyInActiveView = target === view.containerEl.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
+    if (!target || (!view.containerEl.contains(target) && !bodyInActiveView) || target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")) return;
+    if (event.altKey || event.metaKey || event.shiftKey) return;
+    const key = event.key.toLowerCase();
+    if (this.prefix?.view === view && Date.now() < this.prefix.until) {
+      this.prefix = undefined;
+      const direction = DIRECTIONS[key];
+      if (direction) { void this.navigate(direction).catch(this.onError); return false; }
+    }
+    if (event.ctrlKey) {
+      if (key === "w") { this.prefix = { view, until: Date.now() + 1500 }; return false; }
+      return;
+    }
+    this.prefix = undefined;
+    if (key === "escape") { void this.focusEditor().catch(this.onError); return false; }
+    if (view.getViewType() !== "file-explorer") return;
+    const arrow = TREE_KEYS[key];
+    if (arrow) {
+      this.sendTreeKey(view, arrow);
+      return false;
+    }
+  }
+
+  private async focusLeaf(leaf: WorkspaceLeaf): Promise<void> {
+    if (this.disposed) return;
+    if (this.app.workspace.activeLeaf?.view.getViewType() === "markdown") this.lastEditor = this.app.workspace.activeLeaf;
+    await this.app.workspace.revealLeaf(leaf);
+    if (this.disposed) return;
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    this.prefix = undefined;
+    this.refresh();
+    const view = leaf.view;
+    if (view.getViewType() === "markdown") {
+      (view as MarkdownView).editor.focus();
+      return;
+    }
+    const target = view.containerEl.querySelector<HTMLElement>(".nav-files-container, [role=tree]") ?? view.containerEl;
+    if (!target.hasAttribute("tabindex")) {
+      if (!this.tabIndexes.has(target)) this.tabIndexes.set(target, null);
+      target.tabIndex = -1;
+    }
+    target.focus({ preventScroll: true });
+    if (view.getViewType() === "file-explorer" && !target.querySelector(".has-focus")) this.sendTreeKey(view, "ArrowDown");
+  }
+
+  private sendTreeKey(view: View, key: string): void {
+    const target = view.containerEl.querySelector<HTMLElement>(".nav-files-container") ?? view.containerEl;
+    const win = target.ownerDocument.defaultView;
+    if (!win) return;
+    // Let Obsidian's own tree handle folders, selection, scrolling and opening notes.
+    const code = ({ ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 } as Record<string, number>)[key];
+    target.dispatchEvent(new win.KeyboardEvent("keydown", { key, code: key, keyCode: code, which: code, bubbles: true, cancelable: true }));
+  }
+}

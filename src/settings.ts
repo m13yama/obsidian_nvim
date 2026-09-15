@@ -6,6 +6,7 @@ export interface NeovimSettings {
   initPath: string;
   enabled: boolean;
   statusLineStyle: StatusLineStyle;
+  navigation: boolean;
 }
 
 export const DEFAULT_SETTINGS: NeovimSettings = {
@@ -14,4 +15,5 @@ export const DEFAULT_SETTINGS: NeovimSettings = {
   initPath: "",
   enabled: true,
   statusLineStyle: "powerline",
+  navigation: true,
 };

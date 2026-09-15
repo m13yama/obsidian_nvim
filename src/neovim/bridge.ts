@@ -1,3 +1,5 @@
+import { BLOCK_SELECTION_LUA } from "./block-selection";
+
 /** Runs inside Neovim. Note text lives in managed acwrite buffers, never a vault file. */
 export const BRIDGE_LUA = String.raw`
 local channel = ...
@@ -11,22 +13,43 @@ vim.o.hidden = true
 vim.o.autowrite = false
 vim.o.autowriteall = false
 
+${BLOCK_SELECTION_LUA}
+
+function M.setup_navigation()
+  for key, direction in pairs({ h = 'left', j = 'down', k = 'up', l = 'right', p = 'editor' }) do
+    local target = direction
+    local lhs = '<C-w>' .. key
+    -- Preserve custom user mappings; these defaults replace only built-in window motions.
+    if vim.fn.maparg(lhs, 'n') == '' then
+      vim.keymap.set('n', lhs, function()
+        vim.rpcnotify(channel, 'obsidian:navigate', target)
+      end, { silent = true, desc = 'Obsidian: focus ' .. target })
+    end
+  end
+end
+
 function M.emit()
   M.pending = false
   local buf = api.nvim_get_current_buf()
   local entry = M.buffers[buf]
   if not entry then return end
   local anchor = vim.fn.getpos('v')
+  local cursor = vim.fn.getpos('.')
+  local mode = api.nvim_get_mode().mode
+  local screen_column = display_span(cursor)
   local state = {
     id = entry.id,
     revision = entry.revision,
     cursor = api.nvim_win_get_cursor(0),
     anchor = { anchor[2], math.max(0, anchor[3] - 1) },
-    mode = api.nvim_get_mode().mode,
+    mode = mode,
     lineCount = api.nvim_buf_line_count(buf),
-    screenColumn = vim.fn.virtcol('.', true)[1],
+    screenColumn = screen_column + 1,
     recording = vim.fn.reg_recording(),
   }
+  if mode == string.char(22) or mode == string.char(19) then
+    state.blockSelection = block_selection(anchor, cursor)
+  end
   if entry.dirty then
     state.lines = api.nvim_buf_get_lines(buf, 0, -1, true)
     entry.dirty = false

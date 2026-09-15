@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.0.3 — Beta — 2026-09-15
+
+- Make Normal-mode cursors clearly visible with a steady green block, light/dark colors, a subtle current-line highlight, and a hollow block when unfocused.
+- Draw cursor cells on empty lines and after line ends without inserting text; keep emoji and combining characters together.
+- Manage editor attributes through CodeMirror so opening notes and focus changes preserve cursor styling. Restore the native caret for typing and IME composition.
+- Render blockwise Visual/Select ranges with a purple overlay, including partial tabs, Japanese/Unicode text, wrapped lines, and virtual space. Clear the overlay on mode changes, host edits, and disconnects.
+- Route editor keys through Obsidian view scopes before application hotkeys. Ctrl+V enters blockwise Visual mode; Ctrl+A/Ctrl+X perform Vim number operations in Normal mode. Preserve native paste, cut, select-all, and find while typing.
+- Keep save, copy, the quick switcher, Ctrl+E editing/reading toggle, Ctrl+Shift shortcuts, Alt shortcuts, and macOS Command shortcuts with Obsidian.
+- Add optional Ctrl+W h/j/k/l pane/sidebar navigation and Ctrl+W p to return to the editor, while preserving custom Neovim mappings. Add commands to focus either sidebar or the editor.
+- Support h/j/k/l through the file explorer's native tree navigation, with Esc returning to the note; leave renaming, search inputs, and modal shortcuts alone.
+- Keep sidebar navigation working after Obsidian's native tree movement releases DOM focus.
+- Preserve cursor styling when opening another file replaces the entire CodeMirror state and reuses the editor DOM.
+- Use Node timers for process shutdown so restarting or disabling Neovim works inside Obsidian's browser environment.
+- Send UI resize notifications without blocking the next key in a pending command, preventing navigation-related timeouts and disconnects.
+
+Validated with the production build, all seven automated test files using Neovim 0.12.5, and an isolated Obsidian 1.12.7 vault on Linux. Desktop checks covered 18 navigation/editing workflows plus restart, disable, and re-enable.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian completely.
+
 ## 0.0.2 — Beta — 2026-09-15
 
 - Add a colored Powerline status line with the note name, cursor position, document progress, and macro recording indicator; include an immediately switchable compact style.

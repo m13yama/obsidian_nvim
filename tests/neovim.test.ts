@@ -104,6 +104,18 @@ test("missing executable fails with a useful error", async () => {
   session.dispose();
 });
 
+test("process shutdown works when the renderer exposes numeric timer handles", async (t) => {
+  const session = new NeovimSession({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" }, {
+    state: () => {}, commandLine: () => {}, message: () => {}, write: () => {}, exit: () => {},
+  });
+  t.after(() => session.dispose());
+  await session.start();
+  // Electron's window.setTimeout returns a number, without Node's unref().
+  const timer = t.mock.method(globalThis, "setTimeout", (() => 1) as unknown as typeof setTimeout);
+  try { assert.doesNotThrow(() => session.dispose()); }
+  finally { timer.mock.restore(); }
+});
+
 test("custom init sees the host flag and real Neovim executes mappings and dot repeat", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "obsidian-neovim-config-"));
   const initPath = join(directory, "init.lua");
@@ -127,4 +139,38 @@ vim.keymap.set('i', 'jj', '<Esc>')
   await waitFor(() => text === "configured configured", "dot repeat");
   await session.input("A!jj");
   await waitFor(() => text === "configured configured!" && state?.mode === "n", "insert mapping");
+});
+
+test("pane mappings notify Obsidian while preserving user mappings and supporting opt-out", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "obsidian-neovim-navigation-"));
+  const initPath = join(directory, "init.lua");
+  await writeFile(initPath, "vim.keymap.set('n', '<C-w>h', 'iuser<Esc>')");
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const navigation of [true, false]) {
+    let text = "";
+    const directions: string[] = [];
+    const session = new NeovimSession({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: true, initPath, navigation }, {
+      state: (state) => { if (state.lines) text = state.lines.join("\n"); }, navigate: (direction) => directions.push(direction),
+      commandLine: () => {}, message: () => {}, write: () => {}, exit: () => {},
+    });
+    try {
+      await session.start();
+      await session.activate({ id: 1, revision: 0, text: "", cursor: [1, 0], name: "navigation.md" });
+      await session.input("<C-w>h");
+      await waitFor(() => text === "user", "custom window mapping takes priority");
+      assert.deepEqual(directions, []);
+      await session.input("<C-w>l");
+      if (navigation) {
+        await waitFor(() => directions.length === 1, "right pane notification");
+        assert.deepEqual(directions, ["right"]);
+        await session.input("<C-w>j<C-w>k<C-w>p");
+        await waitFor(() => directions.length === 4, "other pane notifications");
+        assert.deepEqual(directions, ["right", "down", "up", "editor"]);
+      } else {
+        await session.input("A!<Esc>");
+        await waitFor(() => text === "user!", "input after disabled navigation");
+        assert.deepEqual(directions, []);
+      }
+    } finally { session.dispose(); }
+  }
 });

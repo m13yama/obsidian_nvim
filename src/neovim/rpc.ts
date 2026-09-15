@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { clearTimeout, setTimeout } from "node:timers";
 import { decodeMultiStream, encode } from "@msgpack/msgpack";
 
 interface PendingRequest {
@@ -53,6 +54,11 @@ export class NeovimRpc {
         reject(asError(error));
       }
     });
+  }
+
+  notify(method: string, args: unknown[] = []): void {
+    if (this.closed) throw new Error("Neovim is disconnected.");
+    this.child.stdin.write(encode([2, method, args]));
   }
 
   dispose(): void {

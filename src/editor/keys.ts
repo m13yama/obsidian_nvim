@@ -1,3 +1,5 @@
+import { usesBlockCursor } from "./cursor";
+
 export interface KeyEvent {
   key: string;
   ctrlKey: boolean;
@@ -15,12 +17,14 @@ const SPECIAL_KEYS: Record<string, string> = {
   Insert: "Insert", " ": "Space", "\\": "Bslash", "|": "Bar", "<": "lt",
 };
 
-/** null means the browser/Obsidian keeps the key. Meta shortcuts remain native. */
-export function toNeovimKey(event: KeyEvent): string | null {
-  if (event.isComposing || event.metaKey || event.getModifierState?.("AltGraph")) return null;
+/** null means Obsidian or the OS owns the shortcut. */
+export function toNeovimKey(event: KeyEvent, mode = "n"): string | null {
+  if (event.isComposing || event.metaKey || event.altKey || (event.ctrlKey && event.shiftKey) || event.getModifierState?.("AltGraph")) return null;
   if (["Dead", "Process", "Unidentified", "Shift", "Control", "Alt", "Meta", "CapsLock"].includes(event.key)) return null;
-  // Preserve save and clipboard shortcuts. Ctrl-R remains Neovim redo.
-  if (event.ctrlKey && !event.altKey && ["s", "v", "c", "x"].includes(event.key.toLowerCase())) return null;
+  // Save, copy, the quick switcher, and editing/reading toggle stay with Obsidian.
+  // Ctrl-V/Ctrl-X/Ctrl-A belong to Vim in Normal/Visual, and to the host when typing.
+  if (event.ctrlKey && (["s", "c", "p", "e"].includes(event.key.toLowerCase()) ||
+    (!usesBlockCursor(mode) && ["v", "x", "a", "f"].includes(event.key.toLowerCase())))) return null;
   const special = SPECIAL_KEYS[event.key] ?? (/^F\d{1,2}$/.test(event.key) ? event.key : undefined);
   const modified = event.ctrlKey || event.altKey;
   if (!special && [...event.key].length !== 1) return null;

@@ -1,4 +1,4 @@
-import { NeovimSession, type EditorDocument, type NeovimState, type SessionOptions } from "../neovim/session";
+import { NeovimSession, type EditorDocument, type NavigationDirection, type NeovimState, type SessionOptions } from "../neovim/session";
 import { asError } from "../neovim/rpc";
 
 export interface EditorPort {
@@ -22,6 +22,7 @@ export interface ControllerEvents {
   commandLine: (text: string) => void;
   message: (text: string) => void;
   error: (error: Error) => void;
+  navigate?: (direction: NavigationDirection) => void;
 }
 
 /** Serializes host operations and invalidates callbacks when a process is restarted. */
@@ -74,6 +75,7 @@ export class EditorController {
         if (current()) void this.ports.get(id)?.save().catch((error: unknown) => this.events.error(asError(error)));
       },
       exit: (error) => { if (current()) this.fail(error); },
+      navigate: (direction) => { if (current()) this.events.navigate?.(direction); },
     });
     this.session = session;
     try {
