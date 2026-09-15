@@ -5,19 +5,11 @@ local api = vim.api
 local M = { buffers = {}, ids = {}, pending = false }
 _G.obsidian_bridge = M
 vim.g.obsidian = true
+-- Keep note buffers available while switching editors. Obsidian owns saving.
+-- Leave editing, clipboard, and display preferences from the user's config intact.
 vim.o.hidden = true
-vim.o.swapfile = false
-vim.o.writebackup = false
-vim.o.backup = false
 vim.o.autowrite = false
 vim.o.autowriteall = false
-vim.o.mouse = ''
-vim.o.showmode = false
-vim.o.ruler = false
-vim.o.laststatus = 0
-vim.o.wrap = false
-vim.o.virtualedit = ''
-vim.o.clipboard = ''
 
 function M.emit()
   M.pending = false
@@ -31,6 +23,9 @@ function M.emit()
     cursor = api.nvim_win_get_cursor(0),
     anchor = { anchor[2], math.max(0, anchor[3] - 1) },
     mode = api.nvim_get_mode().mode,
+    lineCount = api.nvim_buf_line_count(buf),
+    screenColumn = vim.fn.virtcol('.', true)[1],
+    recording = vim.fn.reg_recording(),
   }
   if entry.dirty then
     state.lines = api.nvim_buf_get_lines(buf, 0, -1, true)
@@ -46,7 +41,7 @@ function M.schedule()
 end
 
 local group = api.nvim_create_augroup('ObsidianNeovimBridge', { clear = true })
-api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI', 'ModeChanged', 'TextChanged', 'TextChangedI' }, {
+api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI', 'ModeChanged', 'TextChanged', 'TextChangedI', 'RecordingEnter', 'RecordingLeave' }, {
   group = group, callback = M.schedule,
 })
 
@@ -73,8 +68,10 @@ end
 
 function M.activate(id, lines, cursor, revision, name)
   local buf = M.ids[id]
+  local created = false
   if not buf or not api.nvim_buf_is_valid(buf) then
     buf = api.nvim_create_buf(false, true)
+    created = true
     M.ids[id] = buf
     M.buffers[buf] = { id = id, revision = revision, dirty = true }
     api.nvim_buf_set_name(buf, 'obsidian://' .. id .. '/' .. name)
@@ -100,9 +97,17 @@ function M.activate(id, lines, cursor, revision, name)
         vim.bo[buf].modified = false
       end,
     })
-    vim.bo[buf].filetype = 'markdown'
   end
   api.nvim_set_current_buf(buf)
+  if created then
+    -- FileType and after/ftplugin hooks must run in the displayed note's context.
+    vim.bo[buf].filetype = 'markdown'
+    -- A filetype plugin may change buffer options; note storage still belongs to Obsidian.
+    vim.bo[buf].buftype = 'acwrite'
+    vim.bo[buf].bufhidden = 'hide'
+    vim.bo[buf].swapfile = false
+    vim.bo[buf].undofile = false
+  end
   M.sync(id, lines, cursor, revision)
 end
 

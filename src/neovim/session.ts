@@ -1,5 +1,9 @@
 import { BRIDGE_LUA } from "./bridge";
 import { NeovimRpc } from "./rpc";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 
 export interface NeovimState {
   id: number;
@@ -8,6 +12,9 @@ export interface NeovimState {
   cursor: [number, number];
   anchor: [number, number];
   mode: string;
+  lineCount: number;
+  screenColumn: number;
+  recording: string;
 }
 
 export interface EditorDocument {
@@ -23,6 +30,7 @@ export interface SessionOptions {
   useConfig: boolean;
   initPath: string;
   cwd?: string;
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface SessionEvents {
@@ -38,28 +46,75 @@ export class NeovimSession {
   private activeId?: number;
   private commandLines = new Map<number, string>();
   private disposed = false;
+  private startup?: { resolve: () => void; reject: (error: Error) => void };
 
   constructor(private options: SessionOptions, private events: SessionEvents) {}
 
   async start(): Promise<void> {
-    const args = ["--embed", "--headless", "-n", "-i", "NONE", "--cmd", "let g:obsidian = v:true"];
+    const initPath = this.options.useConfig && this.options.initPath.trim()
+      ? resolveInitPath(this.options.initPath.trim(), this.options.cwd)
+      : undefined;
+    if (initPath) {
+      try {
+        await access(initPath, constants.R_OK);
+        if (!(await stat(initPath)).isFile()) throw new Error("Not a file");
+      }
+      catch { throw new Error(`Cannot read Neovim init file: ${initPath}`); }
+    }
+    if (this.disposed) throw new Error("Neovim startup cancelled.");
+    // --embed pauses before init until the UI is attached. --headless skips that
+    // handshake and causes UI-dependent startup plugins to see a headless process.
+    const args = ["--embed", "-n", "-i", "NONE", "--cmd", "let g:obsidian = v:true"];
     if (!this.options.useConfig) args.push("--clean");
-    else if (this.options.initPath.trim()) args.push("-u", this.options.initPath.trim());
-    const rpc = new NeovimRpc(this.options.executable, args, this.options.cwd);
+    else if (initPath) args.push("-u", initPath);
+    const rpc = new NeovimRpc(this.options.executable, args, this.options.cwd, this.options.env);
     this.rpc = rpc;
     rpc.onNotification = (method, args) => this.notification(method, args);
-    rpc.onExit = (error) => { if (!this.disposed) this.events.exit(error); };
+    rpc.onExit = (error) => {
+      this.startup?.reject(error);
+      if (!this.disposed) this.events.exit(error);
+    };
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       const [channel, metadata] = await rpc.request<[number, { version: { major: number; minor: number } }]>("nvim_get_api_info");
       if (metadata.version.major === 0 && metadata.version.minor < 9) throw new Error("Neovim 0.9 or newer is required.");
       if (this.disposed) throw new Error("Neovim startup cancelled.");
-      await rpc.request("nvim_ui_attach", [120, 40, {
-        rgb: true, ext_linegrid: true, ext_cmdline: true, ext_messages: true, ext_popupmenu: true,
-      }]);
+      await rpc.request("nvim_exec_lua", [String.raw`
+        local channel, config_dir = ...
+        if type(config_dir) == 'string' then
+          -- A custom init can require sibling lua/ modules and load its own
+          -- plugin/, pack/, and after/ files just like a standard config directory.
+          vim.opt.runtimepath:prepend(config_dir)
+          vim.opt.runtimepath:append(config_dir .. '/after')
+          vim.opt.packpath:prepend(config_dir)
+          vim.opt.packpath:append(config_dir .. '/after')
+        end
+        vim.api.nvim_create_autocmd('VimEnter', {
+          once = true,
+          callback = function()
+            vim.schedule(function() vim.rpcnotify(channel, 'obsidian:ready') end)
+          end,
+        })
+      `, [channel, initPath ? dirname(initPath) : null]]);
+      const ready = new Promise<void>((resolve, reject) => {
+        this.startup = { resolve, reject };
+        startupTimer = setTimeout(() => reject(new Error("Neovim configuration did not finish loading. Check startup messages or try clean mode.")), 30000);
+      });
+      // Register both promises together so exit/cancellation also rejects cleanly
+      // while nvim_ui_attach is still waiting for user configuration to finish.
+      await Promise.all([
+        ready,
+        rpc.request("nvim_ui_attach", [120, 40, {
+          rgb: true, ext_linegrid: true, ext_cmdline: true, ext_messages: true, ext_popupmenu: true,
+        }], 30000),
+      ]);
       await rpc.request("nvim_exec_lua", [BRIDGE_LUA, [channel]]);
     } catch (error) {
       rpc.dispose();
       throw error;
+    } finally {
+      clearTimeout(startupTimer);
+      this.startup = undefined;
     }
   }
 
@@ -113,6 +168,7 @@ export class NeovimSession {
 
   dispose(): void {
     this.disposed = true;
+    this.startup?.reject(new Error("Neovim startup cancelled."));
     this.rpc?.dispose();
     this.rpc = undefined;
   }
@@ -128,7 +184,8 @@ export class NeovimSession {
 
   private notification(method: string, args: unknown[]): void {
     if (this.disposed) return;
-    if (method === "obsidian:state") this.events.state(args[0] as NeovimState);
+    if (method === "obsidian:ready") this.startup?.resolve();
+    else if (method === "obsidian:state") this.events.state(args[0] as NeovimState);
     else if (method === "obsidian:write") this.events.write(args[0] as number);
     else if (method === "redraw") this.redraw(args as unknown[][]);
   }
@@ -163,4 +220,9 @@ export class NeovimSession {
 function chunksText(content: unknown): string {
   if (!Array.isArray(content)) return "";
   return content.map((chunk: unknown) => Array.isArray(chunk) ? String(chunk[1] ?? "") : "").join("");
+}
+
+function resolveInitPath(path: string, cwd?: string): string {
+  const expanded = path === "~" ? homedir() : /^~[/\\]/.test(path) ? resolve(homedir(), path.slice(2)) : path;
+  return resolve(cwd ?? process.cwd(), expanded);
 }

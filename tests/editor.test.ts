@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { EditorController } from "../src/editor/controller";
+import { EditorController, type StatusDetails } from "../src/editor/controller";
 import { neovimExtension } from "../src/editor/extension";
 
 async function waitFor(check: () => boolean, label: string): Promise<void> {
@@ -25,11 +25,12 @@ test("CodeMirror and real Neovim stay in sync through typing, external edits, no
   window.Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   window.Range.prototype.getBoundingClientRect = () => new window.DOMRect();
   let status = "";
+  let statusDetails: StatusDetails | undefined;
   let name = "first.md";
   let saves = 0;
   const errors: Error[] = [];
   const controller = new EditorController({
-    status: (value) => { status = value; }, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
+    status: (value, details) => { status = value; statusDetails = details; }, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
   });
   const view = new EditorView({
     parent: window.document.body,
@@ -49,6 +50,10 @@ test("CodeMirror and real Neovim stay in sync through typing, external edits, no
   };
   for (const value of ["d", "w"]) key(value);
   await waitFor(() => view.state.doc.toString() === "world", "delete word reaches CodeMirror");
+  assert.equal(statusDetails?.file, "first.md");
+  assert.equal(statusDetails?.line, 1);
+  assert.equal(statusDetails?.column, 1);
+  assert.equal(statusDetails?.totalLines, 1);
   key("u");
   await waitFor(() => view.state.doc.toString() === "hello world", "Neovim undo");
   key("v"); key("l"); key("l");
@@ -75,8 +80,10 @@ test("CodeMirror and real Neovim stay in sync through typing, external edits, no
   assert.equal(view.state.doc.toString(), "second note", "undo does not restore another note");
   key("A"); key("!"); key("Escape");
   await waitFor(() => view.state.doc.toString() === "second note!", "reused view edits its new note");
+  assert.equal(statusDetails?.file, "second.md", "status line follows the active note");
 
   controller.stop();
+  assert.equal(statusDetails, undefined, "disconnection clears note context from the status line");
   const event = new window.KeyboardEvent("keydown", { key: "i", bubbles: true, cancelable: true });
   view.contentDOM.dispatchEvent(event);
   assert.equal(event.defaultPrevented, false, "disconnect releases keyboard to Obsidian");

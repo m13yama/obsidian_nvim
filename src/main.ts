@@ -2,12 +2,13 @@ import { editorInfoField, FileSystemAdapter, MarkdownView, Notice, Plugin, Plugi
 import type { EditorView } from "@codemirror/view";
 import { EditorController } from "./editor/controller";
 import { neovimExtension } from "./editor/extension";
-import { DEFAULT_SETTINGS, type NeovimSettings } from "./settings";
+import { DEFAULT_SETTINGS, type NeovimSettings, type StatusLineStyle } from "./settings";
+import { NeovimStatusLine } from "./ui/status-line";
 
 export default class NeovimPlugin extends Plugin {
   settings: NeovimSettings = { ...DEFAULT_SETTINGS };
   private controller!: EditorController;
-  private status!: HTMLElement;
+  private statusLine!: NeovimStatusLine;
   private commandLine!: HTMLElement;
   private messageTimer?: ReturnType<typeof setTimeout>;
   private showingCommand = false;
@@ -15,9 +16,8 @@ export default class NeovimPlugin extends Plugin {
 
   async onload(): Promise<void> {
     this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() };
-    this.status = this.addStatusBarItem();
-    this.status.addClass("neovim-status");
-    this.status.setAttribute("aria-label", "Neovim status");
+    this.statusLine = new NeovimStatusLine(this.addStatusBarItem(), () => { void this.restart(); }, this.settings.statusLineStyle);
+    this.register(() => this.statusLine.destroy());
     this.commandLine = document.body.createDiv({ cls: "neovim-command-line" });
     this.commandLine.setAttribute("role", "status");
     this.commandLine.setAttribute("aria-live", "polite");
@@ -25,7 +25,7 @@ export default class NeovimPlugin extends Plugin {
     this.register(() => this.commandLine.remove());
 
     this.controller = new EditorController({
-      status: (status) => this.status.setText(`NVIM ${status}`),
+      status: (status, details) => this.statusLine.update(status, details),
       commandLine: (text) => {
         this.showingCommand = text.length > 0;
         this.showMessage(text);
@@ -51,7 +51,6 @@ export default class NeovimPlugin extends Plugin {
         else this.controller.stop();
       },
     });
-    this.registerDomEvent(this.status, "click", () => { void this.restart(); });
     this.app.workspace.onLayoutReady(() => {
       if (this.unloaded) return;
       if (this.settings.enabled) void this.restart();
@@ -76,6 +75,12 @@ export default class NeovimPlugin extends Plugin {
       initPath: this.settings.initPath,
       cwd: adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined,
     });
+  }
+
+  async setStatusLineStyle(style: StatusLineStyle): Promise<void> {
+    this.settings.statusLineStyle = style;
+    this.statusLine.setStyle(style);
+    await this.saveData(this.settings);
   }
 
   private markdownView(editor: EditorView): MarkdownView | undefined {
@@ -106,6 +111,14 @@ class NeovimSettingTab extends PluginSettingTab {
     this.containerEl.createEl("h2", { text: "Neovim" });
     this.containerEl.createEl("p", { text: "Requires desktop Obsidian and Neovim 0.9 or newer. Turn off Obsidian’s built-in Vim key bindings. Apply changes with Restart Neovim below." });
     new Setting(this.containerEl)
+      .setName("Status line style")
+      .setDesc("Powerline shows colored mode segments, the note name, cursor position, and progress. Compact keeps the mode and position. Changes apply immediately.")
+      .addDropdown((dropdown) => dropdown
+        .addOption("powerline", "Powerline")
+        .addOption("compact", "Compact")
+        .setValue(this.plugin.settings.statusLineStyle)
+        .onChange(async (value) => { await this.plugin.setStatusLineStyle(value as StatusLineStyle); }));
+    new Setting(this.containerEl)
       .setName("Neovim executable")
       .setDesc("Use nvim if it is on Obsidian’s PATH, or the full path to the executable. Do not include command-line arguments.")
       .addText((text) => text.setPlaceholder("nvim").setValue(this.plugin.settings.executable).onChange(async (value) => {
@@ -114,14 +127,14 @@ class NeovimSettingTab extends PluginSettingTab {
       }));
     new Setting(this.containerEl)
       .setName("Load Neovim configuration")
-      .setDesc("Off starts a clean Neovim. When on, loads your usual configuration or the init file below. vim.g.obsidian is set before your config runs.")
+      .setDesc("On by default. Loads your init.lua/init.vim, modules, and plugins. Use vim.g.obsidian in Lua or g:obsidian in Vimscript to detect Obsidian before your config loads. Turn off for clean mode; restart to apply.")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.useConfig).onChange(async (value) => {
         this.plugin.settings.useConfig = value;
         await this.plugin.saveData(this.plugin.settings);
       }));
     new Setting(this.containerEl)
       .setName("Custom init file")
-      .setDesc("Optional absolute path to init.lua or init.vim. Leave blank to use your normal Neovim config.")
+      .setDesc("Leave blank to use your normal Neovim config. A custom init.lua/init.vim also loads modules and plugins from its directory. Paths starting with ~/ are supported.")
       .addText((text) => text.setPlaceholder("/path/to/obsidian-init.lua").setValue(this.plugin.settings.initPath).onChange(async (value) => {
         this.plugin.settings.initPath = value;
         await this.plugin.saveData(this.plugin.settings);

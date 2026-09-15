@@ -17,9 +17,10 @@ export class NeovimRpc {
   onNotification: (method: string, args: unknown[]) => void = () => {};
   onExit: (error: Error) => void = () => {};
 
-  constructor(executable: string, args: string[], cwd?: string) {
+  constructor(executable: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv) {
     this.child = spawn(executable, args, {
       cwd,
+      env: env ? { ...process.env, ...env } : process.env,
       stdio: "pipe",
       windowsHide: true,
       shell: false,

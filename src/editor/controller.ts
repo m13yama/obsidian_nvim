@@ -9,8 +9,16 @@ export interface EditorPort {
   save(): Promise<void>;
 }
 
+export interface StatusDetails {
+  file?: string;
+  line: number;
+  column: number;
+  totalLines: number;
+  recording: string;
+}
+
 export interface ControllerEvents {
-  status: (status: string) => void;
+  status: (status: string, details?: StatusDetails) => void;
   commandLine: (text: string) => void;
   message: (text: string) => void;
   error: (error: Error) => void;
@@ -21,7 +29,7 @@ export class EditorController {
   private ports = new Map<number, EditorPort>();
   private session?: NeovimSession;
   private activeId?: number;
-  private initialized = new Set<number>();
+  private initialized = new Map<number, string>();
   private queue: Promise<void> = Promise.resolve();
   private generation = 0;
   ready = false;
@@ -36,7 +44,10 @@ export class EditorController {
   unregister(id: number): void {
     this.ports.delete(id);
     this.initialized.delete(id);
-    if (this.activeId === id) this.activeId = undefined;
+    if (this.activeId === id) {
+      this.activeId = undefined;
+      if (this.ready) this.events.status("Ready");
+    }
     if (this.ready) this.enqueue((session) => session.release(id));
   }
 
@@ -49,7 +60,13 @@ export class EditorController {
       state: (state) => {
         if (!current()) return;
         this.ports.get(state.id)?.apply(state);
-        if (state.id === this.activeId) this.events.status(modeLabel(state.mode));
+        if (state.id === this.activeId) this.events.status(modeLabel(state.mode), {
+          file: this.initialized.get(state.id),
+          line: state.cursor[0],
+          column: state.screenColumn,
+          totalLines: state.lineCount,
+          recording: state.recording,
+        });
       },
       commandLine: (text) => { if (current()) this.events.commandLine(text); },
       message: (text) => { if (current()) this.events.message(text); },
@@ -63,7 +80,7 @@ export class EditorController {
       await session.start();
       if (!current()) { session.dispose(); return; }
       this.ready = true;
-      this.events.status("NORMAL");
+      this.events.status("Ready");
       for (const port of this.ports.values()) port.setConnected(true);
     } catch (error) {
       if (current()) this.fail(asError(error));
@@ -126,8 +143,8 @@ export class EditorController {
     if (this.activeId === port.id || !this.ports.has(port.id)) return;
     const document = port.document();
     this.activeId = document.id;
+    this.initialized.set(document.id, document.name);
     await session.activate(document);
-    this.initialized.add(document.id);
   }
 
   private enqueue(action: (session: NeovimSession) => Promise<unknown>): void {
@@ -154,7 +171,13 @@ export function modeLabel(mode: string): string {
   if (mode.startsWith("R")) return "REPLACE";
   if (mode === "V") return "VISUAL LINE";
   if (mode === "\x16") return "VISUAL BLOCK";
-  if (mode.startsWith("v") || mode.startsWith("s") || mode === "S" || mode === "\x13") return "VISUAL";
+  if (mode.startsWith("v")) return "VISUAL";
+  if (mode === "S") return "SELECT LINE";
+  if (mode === "\x13") return "SELECT BLOCK";
+  if (mode.startsWith("s")) return "SELECT";
   if (mode.startsWith("c")) return "COMMAND";
+  if (mode.startsWith("r")) return "PROMPT";
+  if (mode === "t") return "TERMINAL";
+  if (mode === "!") return "SHELL";
   return "NORMAL";
 }

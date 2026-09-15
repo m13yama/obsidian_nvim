@@ -1,7 +1,166 @@
-.neovim-status {
+.status-bar-item.neovim-status {
+  padding: 0;
+  min-width: 0;
+  max-width: 480px;
+}
+
+button.neovim-statusline {
+  --neovim-mode-color: #9ece6a;
+  --neovim-mode-ink: #18202f;
+  --neovim-mode-surface: color-mix(in srgb, var(--neovim-mode-color) 13%, var(--background-secondary));
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  height: 25px;
+  min-height: 25px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: none;
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+button.neovim-statusline:hover {
+  background: var(--background-primary);
+  border-color: var(--neovim-mode-color);
+  box-shadow: none;
+}
+
+button.neovim-statusline:focus-visible {
+  outline: 2px solid var(--neovim-mode-color);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.neovim-statusline[data-tone="insert"] { --neovim-mode-color: #7dcfff; }
+.neovim-statusline[data-tone="visual"] { --neovim-mode-color: #bb9af7; }
+.neovim-statusline[data-tone="replace"],
+.neovim-statusline[data-tone="error"] { --neovim-mode-color: #f7768e; }
+.neovim-statusline[data-tone="command"],
+.neovim-statusline[data-tone="starting"] { --neovim-mode-color: #e0af68; }
+.neovim-statusline[data-tone="operator"] { --neovim-mode-color: #ff9e64; }
+.neovim-statusline[data-tone="idle"] { --neovim-mode-color: #a9b1c7; }
+
+.neovim-statusline > span,
+.neovim-statusline-mode > span {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.neovim-statusline-engine {
+  padding: 0 8px;
+  background: var(--neovim-mode-ink);
+  color: var(--neovim-mode-color);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.neovim-statusline-mode {
+  gap: 5px;
+  padding: 0 17px 0 8px;
+  background: var(--neovim-mode-color);
+  color: var(--neovim-mode-ink);
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+}
+
+.neovim-statusline-symbol {
+  justify-content: center;
+  width: 11px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.neovim-statusline > .neovim-statusline-file {
+  display: block;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 160px;
+  padding: 0 10px 0 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 23px;
+}
+
+.neovim-statusline-position {
+  padding: 0 9px;
+  border-left: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.neovim-statusline-progress {
+  justify-content: center;
+  min-width: 39px;
+  padding: 0 7px;
+  background: var(--neovim-mode-surface);
+  color: var(--text-normal);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.neovim-statusline-recording {
+  gap: 5px;
+  padding: 0 8px;
+  color: var(--text-error, #f7768e);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.neovim-statusline-recording::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.neovim-statusline[data-style="compact"] .neovim-statusline-engine,
+.neovim-statusline[data-style="compact"] .neovim-statusline-file,
+.neovim-statusline[data-style="compact"] .neovim-statusline-progress {
+  display: none;
+}
+
+.neovim-statusline[data-style="compact"] .neovim-statusline-mode {
+  padding-right: 9px;
+  clip-path: none;
+}
+
+.neovim-statusline [hidden] {
+  display: none !important;
+}
+
+.neovim-statusline-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .neovim-statusline .neovim-statusline-engine,
+  .neovim-statusline .neovim-statusline-file,
+  .neovim-statusline .neovim-statusline-progress {
+    display: none;
+  }
 }
 
 .neovim-command-line {

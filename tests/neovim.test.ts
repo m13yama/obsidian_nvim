@@ -34,6 +34,12 @@ test("real Neovim: editing, modes, undo, registers, search, Ex, Unicode, paste, 
   await session.start();
   await session.activate({ id: 1, revision: 0, text: "hello world\nsecond line", cursor: [1, 0], name: "test.md" });
   await waitFor(() => text === "hello world\nsecond line", "initial content");
+  assert.equal(state?.lineCount, 2);
+  assert.equal(state?.screenColumn, 1);
+  await session.input("qq");
+  await waitFor(() => state?.recording === "q", "macro recording status without a text change");
+  await session.input("q");
+  await waitFor(() => state?.recording === "", "macro recording stops without a text change");
 
   await session.input("dw");
   await waitFor(() => text === "world\nsecond line", "delete word");
@@ -44,6 +50,7 @@ test("real Neovim: editing, modes, undo, registers, search, Ex, Unicode, paste, 
   await session.input("i日本語😀<Esc>");
   await waitFor(() => text === "日本語😀world\nsecond line" && state?.mode === "n", "insert Unicode");
   assert.deepEqual(state?.cursor, [1, 9]);
+  assert.equal(state?.screenColumn, 7, "display column accounts for Japanese character widths");
 
   await session.input("0vll");
   await waitFor(() => state?.mode === "v" && state.cursor[1] === 6, "visual selection");
