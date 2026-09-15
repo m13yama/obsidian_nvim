@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.4 — Beta — 2026-09-16
+
+- Scroll Markdown reading view down with `j` and up with `k`, including key repeat. Keep search fields, note titles, editable controls, and dialogs available for normal typing.
+- Focus the visible reading view when returning from a sidebar, so `j` / `k` work immediately.
+- Center the cursor line in the editor with `zz` in Normal and Visual modes, including counts such as `50zz` and macro playback. Preserve custom global and buffer-local `zz` mappings.
+- Prevent unchanged Neovim status notifications from overriding a pending centering request.
+
+Validated with the production build, TypeScript checks, and all seven automated test files using Neovim 0.12.5. New coverage checks reading-view key routing and real Neovim commands reaching CodeMirror's scrolling handler. The new scrolling behavior has not yet been manually verified in desktop Obsidian.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.3 — Beta — 2026-09-15
 
 - Make Normal-mode cursors clearly visible with a steady green block, light/dark colors, a subtle current-line highlight, and a hollow block when unfocused.
