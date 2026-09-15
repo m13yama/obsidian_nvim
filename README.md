@@ -1,14 +1,14 @@
 # Neovim for Obsidian
 
-**0.0.4 — Beta**
+**0.0.5 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
 ## Install
 
-Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.12.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
+Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.4 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.4), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.4.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.5 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.5), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.5.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -217,7 +217,7 @@ Use a scratch note for the first desktop test:
 7. Check the cursor on Japanese text, emoji, empty lines, and line ends in light/dark themes. Switch panes, use IME, and toggle Neovim to check caret restoration.
 8. Use `Ctrl+V`, `j`, `l` on a scratch note and verify that the highlighted columns follow the selection; delete with `d` and undo with `u`. Repeat across Japanese text, tabs, and empty lines. Verify native `Ctrl+V` still pastes in Insert mode, and `Ctrl+E` still switches editing/reading views. Check save, copy, quick switcher, and command palette shortcuts too.
 9. Use `Ctrl+W h` to focus Files, navigate with `h/j/k/l`, open a note with `Enter`, and return with `Esc`. Check that renaming/search fields and dialogs accept ordinary typing.
-10. Switch a long note to reading view with `Ctrl+E`. Use `j` / `k`, including holding either key, to scroll down / up. Check that search fields and dialogs accept ordinary typing, then switch back to editing and verify normal Vim motions. In editing view, use `zz` and `50zz` to center the cursor line; repeat after scrolling with the mouse and in Visual mode.
+10. Switch a long note to reading view with `Ctrl+E`. Use `j` / `k`, including holding either key, to scroll down / up. Check that search fields and dialogs accept ordinary typing, close the note search and verify scrolling resumes, then switch back to editing and verify normal Vim motions. In editing view, use `zz` and `50zz` to center the cursor line; repeat after scrolling with the mouse and in Visual mode.
 
 ### API references
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.5 — Beta — 2026-09-16
+
+- Fix reading-view `j` / `k` scrolling by targeting the inner Markdown renderer instead of its non-scrolling wrapper. Focus that same renderer when returning from a sidebar.
+- Restore the view's keyboard handler after note search opens or closes and Obsidian replaces the keyboard scope without a layout event.
+- Model the actual nested reading-view DOM and search scope replacement in regression tests; disconnect the scope observer when the plugin unloads.
+
+Validated with the production build, TypeScript checks, and all seven automated test files using Neovim 0.12.5. Reproduced the 0.0.4 failure and verified the fix in an isolated Obsidian 1.13.7 vault on Linux using browser-driven keyboard input. Desktop checks covered repeated `j` / `k`, editing/reading toggles, search input and closing search, sidebar return, and plugin disable/re-enable.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.4 — Beta — 2026-09-16
 
 - Scroll Markdown reading view down with `j` and up with `k`, including key repeat. Keep search fields, note titles, editable controls, and dialogs available for normal typing.

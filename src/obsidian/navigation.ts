@@ -6,6 +6,7 @@ interface ScopeOverride {
   scope: Scope;
   original: Scope | null;
   handler: ReturnType<Scope["register"]>;
+  observer?: MutationObserver;
 }
 
 const DIRECTIONS: Record<string, NavigationDirection> = { h: "left", j: "down", k: "up", l: "right", p: "editor" };
@@ -40,12 +41,19 @@ export class WorkspaceNavigation {
       views.add(view);
       const previous = this.overrides.get(view);
       if (previous?.scope === view.scope) return;
-      if (previous) previous.scope.unregister(previous.handler);
+      if (previous) this.restore(view, previous);
       const original = view.scope;
       const scope = this.createScope(original ?? this.app.scope);
       const handler = scope.register(null, null, (event) => this.handle(view, event));
       view.scope = scope;
-      this.overrides.set(view, { original, scope, handler });
+      // Closing note search restores Obsidian's original scope without a
+      // layout event. Reattach after its search UI is added or removed.
+      const Observer = view.containerEl.ownerDocument.defaultView?.MutationObserver;
+      const observer = view.getViewType() === "markdown" && Observer ? new Observer(() => {
+        if (view.scope !== scope) this.refresh();
+      }) : undefined;
+      observer?.observe(view.containerEl, { childList: true, subtree: true });
+      this.overrides.set(view, { original, scope, handler, observer });
     });
     for (const [view, override] of this.overrides) {
       if (!views.has(view)) this.restore(view, override);
@@ -107,6 +115,7 @@ export class WorkspaceNavigation {
   }
 
   private restore(view: View, override: ScopeOverride): void {
+    override.observer?.disconnect();
     override.scope.unregister(override.handler);
     if (view.scope === override.scope) view.scope = override.original;
     this.overrides.delete(view);
@@ -153,12 +162,18 @@ export class WorkspaceNavigation {
   private scrollReadingView(view: MarkdownView, event: KeyboardEvent): false | undefined {
     if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || (event.key !== "j" && event.key !== "k")) return;
     const target = event.target as HTMLElement | null;
-    const preview = view.previewMode.containerEl;
+    const preview = this.readingScroller(view);
     const bodyInActiveView = target === preview.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
     if (!target || (!preview.contains(target) && target !== view.containerEl && !bodyInActiveView) ||
       target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")) return;
     preview.scrollBy({ top: event.key === "j" ? READING_SCROLL_STEP : -READING_SCROLL_STEP, behavior: "instant" });
     return false;
+  }
+
+  private readingScroller(view: MarkdownView): HTMLElement {
+    const container = view.previewMode.containerEl;
+    // Reading mode wraps the actual scrolling renderer in .markdown-reading-view.
+    return container.querySelector<HTMLElement>(":scope > .markdown-preview-view") ?? container;
   }
 
   private async focusLeaf(leaf: WorkspaceLeaf): Promise<void> {
@@ -175,7 +190,7 @@ export class WorkspaceNavigation {
       markdown.editor.focus();
       return;
     }
-    const target = markdown?.previewMode.containerEl ??
+    const target = (markdown ? this.readingScroller(markdown) : undefined) ??
       view.containerEl.querySelector<HTMLElement>(".nav-files-container, [role=tree]") ?? view.containerEl;
     if (!target.hasAttribute("tabindex")) {
       if (!this.tabIndexes.has(target)) this.tabIndexes.set(target, null);

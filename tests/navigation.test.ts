@@ -26,7 +26,7 @@ class TestScope {
   }
 }
 
-test("reading view scrolls with j/k and leaves editing, controls, modifiers, and modal scopes alone", (t) => {
+test("reading view scrolls with j/k and leaves editing, controls, modifiers, and modal scopes alone", async (t) => {
   const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
   const { window } = dom;
   const rootScope = new TestScope();
@@ -37,15 +37,17 @@ test("reading view scrolls with j/k and leaves editing, controls, modifiers, and
   const scrolls: ScrollToOptions[] = [];
   const containerEl = window.document.createElement("div");
   containerEl.innerHTML = '<input aria-label="Search"><div contenteditable="true">Title</div>' +
-    '<div class="markdown-preview-view"><p>Long note</p><input><textarea></textarea><select></select>' +
-    '<div contenteditable="true"><span>Editable</span></div></div>';
+    '<div class="markdown-reading-view"><div class="markdown-preview-view"><p>Long note</p><input><textarea></textarea><select></select>' +
+    '<div contenteditable="true"><span>Editable</span></div></div></div>';
   window.document.body.append(containerEl);
   const preview = containerEl.querySelector<HTMLElement>(".markdown-preview-view")!;
+  const reading = containerEl.querySelector<HTMLElement>(".markdown-reading-view")!;
+  reading.scrollBy = () => { assert.fail("the reading wrapper does not scroll"); };
   preview.scrollBy = ((options: ScrollToOptions) => { scrolls.push(options); }) as typeof preview.scrollBy;
   const original = new TestScope(rootScope);
   const leaf = { view: undefined as unknown as MarkdownView };
   leaf.view = { leaf, containerEl, scope: original, getViewType: () => "markdown", getMode: () => mode,
-    previewMode: { containerEl: preview } } as unknown as MarkdownView;
+    previewMode: { containerEl: reading } } as unknown as MarkdownView;
   const otherLeaf = { view: {} };
   const workspace = {
     activeLeaf: leaf as typeof leaf | typeof otherLeaf,
@@ -77,6 +79,18 @@ test("reading view scrolls with j/k and leaves editing, controls, modifiers, and
   assert.equal(paragraph.textContent, "Long note");
   assert.equal(key(window.document.body, "j").defaultPrevented, true, "reading works with body focus after a mode switch");
   assert.equal(key(containerEl, "k").defaultPrevented, true);
+  // Obsidian replaces the view scope for note search, then resets it to the
+  // original scope on close without emitting a workspace layout event.
+  const search = window.document.createElement("input");
+  leaf.view.scope = new TestScope(leaf.view.scope as unknown as TestScope) as unknown as Scope;
+  reading.prepend(search);
+  await Promise.resolve();
+  assert.equal(key(search, "j").defaultPrevented, false);
+  leaf.view.scope = original as unknown as Scope;
+  search.remove();
+  await Promise.resolve();
+  assert.equal(key(window.document.body, "j").defaultPrevented, true, "j works after closing search with body focus");
+  assert.equal(key(paragraph, "k").defaultPrevented, true, "k works after returning focus to the reading content");
   const handled = scrolls.length;
   for (const target of containerEl.querySelectorAll<HTMLElement>("input, textarea, select, [contenteditable] span, [contenteditable]")) {
     for (const value of ["j", "k"]) assert.equal(key(target, value).defaultPrevented, false);
@@ -103,6 +117,9 @@ test("reading view scrolls with j/k and leaves editing, controls, modifiers, and
   navigation.destroy();
   assert.equal(leaf.view.scope, original);
   assert.equal(key(paragraph, "j").defaultPrevented, false, "unloading releases reading shortcuts");
+  reading.append(window.document.createElement("p"));
+  await Promise.resolve();
+  assert.equal(leaf.view.scope, original, "DOM changes after unloading do not reattach a scope");
   assert.equal(scrolls.length, handled, "ignored keys never scroll the preview");
 });
 
@@ -238,9 +255,13 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     await navigation.focusEditor();
     const reading = secondEditor.view as MarkdownView;
     reading.getMode = () => "preview";
+    const wrapper = window.document.createElement("div");
+    wrapper.className = "markdown-reading-view";
     const preview = window.document.createElement("div");
-    reading.containerEl.append(preview);
-    reading.previewMode = { containerEl: preview } as unknown as MarkdownView["previewMode"];
+    preview.className = "markdown-preview-view";
+    wrapper.append(preview);
+    reading.containerEl.append(wrapper);
+    reading.previewMode = { containerEl: wrapper } as unknown as MarkdownView["previewMode"];
     let readingScrolls = 0;
     preview.scrollBy = () => { readingScrolls++; };
     await navigation.focusSidebar("left");

@@ -1,6 +1,6 @@
 {
   "name": "obsidian-neovim",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": true,
   "description": "Use a local Neovim process to edit notes in Obsidian.",
   "main": "main.js",
