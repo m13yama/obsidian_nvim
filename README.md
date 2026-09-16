@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.6 — Beta**
+**0.0.7 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.6 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.6), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.6.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.7 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.7), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.7.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -102,6 +102,8 @@ This preview uses selections captured from a real Neovim process and rendered by
 
 With Neovim running, press `j` to scroll down or `k` to scroll up in Markdown reading view. Hold either key to keep scrolling. These keys work independently of the pane and sidebar navigation setting. Search fields, note titles, embedded editable controls, and dialogs keep their normal input behavior.
 
+When switching a note from reading to editing, the cursor starts at the source line nearest the top of the reading viewport. This follows keyboard, mouse-wheel, and scrollbar scrolling, works with `Ctrl+E` or the view toggle button, and synchronizes Neovim before the next editing command. The reading position is preserved without changing the note text.
+
 ### Pane and sidebar navigation
 
 **Settings → Neovim → Vim pane and sidebar navigation** is enabled by default. Restart Neovim after changing it. Existing custom Neovim mappings for the `Ctrl+W` sequences take priority. `Ctrl+0` is an Obsidian command shortcut and works independently of this setting.
@@ -113,7 +115,7 @@ With Neovim running, press `j` to scroll down or `k` to scroll up in Markdown re
 | `Ctrl+W`, then `p` | Return to the most recently focused Markdown editor |
 | File explorer: `j` / `k` | Move down / up |
 | File explorer: `h` / `l` | Native left/right tree action: collapse / expand a folder, navigate the tree, or open a file |
-| File explorer: `Enter` | Obsidian's native open action |
+| File explorer: `Enter` | Open and focus the selected file; reuse its existing tab if open |
 | File explorer: `a` / `Shift+A` | Create a note / folder in the focused folder (or the focused file's parent) |
 | File explorer: `r` / `d` | Rename / delete the selection using Obsidian's native UI and trash settings |
 | File explorer: `y` / `x` / `p` | Copy / cut / paste files and folders using the plugin's file clipboard |
@@ -121,7 +123,7 @@ With Neovim running, press `j` to scroll down or `k` to scroll up in Markdown re
 | File explorer: `Shift+R` | Refresh the file tree |
 | Sidebar: `Esc` | Return to the editor |
 
-Press Ctrl+W first, then the second key. In notes these are Normal-mode mappings; in sidebars the second key must follow within 1.5 seconds. The file explorer handles selection, folders, scrolling, and opening files through its existing keyboard behavior. Typing into sidebar search or rename fields does not trigger Vim navigation.
+Press Ctrl+W first, then the second key. In notes these are Normal-mode mappings; in sidebars the second key must follow within 1.5 seconds. The file explorer handles selection, folders, and scrolling through its existing keyboard behavior. `Enter` on a file focuses its note, preserving the mode, cursor, and scroll position when that file is already open. `Enter` on a folder keeps Obsidian's native behavior. Typing into sidebar search or rename fields does not trigger Vim navigation.
 
 File operation keys follow [vscode-neovim's explorer bindings](https://github.com/vscode-neovim/vscode-neovim#explorer-file-manipulation-bindings). Creating a note opens Obsidian's native new-note UI; creating a folder starts inline renaming. Copy/cut supports the explorer's selection, including folders, and paste uses Obsidian's collision handling and link-aware moves. Holding an operation key does not repeat it. Obsidian automatically tracks vault changes; `Shift+R` refreshes the displayed tree. These aliases use the core file explorer's internal handlers and report an error if an Obsidian version does not expose the required operation.
 

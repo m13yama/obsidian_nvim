@@ -21,6 +21,13 @@ interface FileExplorerView extends View {
 
 const ACTION_KEYS = new Set(["a", "A", "r", "d", "y", "x", "p", "v", "R"]);
 
+export function focusedExplorerFile(view: View): TFile | undefined {
+  const explorer = view as FileExplorerView;
+  if (view.getViewType() !== "file-explorer" || explorer.fileBeingRenamed) return;
+  const file = explorer.tree?.focusedItem?.file;
+  return file && "extension" in file ? file as TFile : undefined;
+}
+
 export class FileExplorerActions {
   private clipboard = "";
   private cutView?: FileExplorerView;

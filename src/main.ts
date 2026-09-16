@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS, type NeovimSettings, type StatusLineStyle } from "./s
 import { NeovimStatusLine } from "./ui/status-line";
 import { EditorKeyRouter } from "./editor/key-router";
 import { WorkspaceNavigation } from "./obsidian/navigation";
+import { ReadingPositionSync } from "./obsidian/reading-position";
 
 export default class NeovimPlugin extends Plugin {
   settings: NeovimSettings = { ...DEFAULT_SETTINGS };
@@ -17,6 +18,7 @@ export default class NeovimPlugin extends Plugin {
   private unloaded = false;
   private keyRouter = new EditorKeyRouter();
   private navigation!: WorkspaceNavigation;
+  private readingPosition!: ReadingPositionSync;
 
   async onload(): Promise<void> {
     this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() };
@@ -45,9 +47,11 @@ export default class NeovimPlugin extends Plugin {
     });
     this.navigation = new WorkspaceNavigation(this.app, (parent) => new Scope(parent), this.keyRouter,
       () => this.controller.ready, () => this.settings.navigation, (error) => this.navigationError(error));
+    this.readingPosition = new ReadingPositionSync(this.app, () => this.controller.ready);
     this.register(() => this.navigation.destroy());
-    this.registerEvent(this.app.workspace.on("layout-change", () => this.navigation.refresh()));
-    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.navigation.refresh()));
+    this.register(() => this.readingPosition.destroy());
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.refreshViews()));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.refreshViews()));
     this.registerEditorExtension(neovimExtension(this.controller, {
       name: (view) => view.state.field(editorInfoField, false)?.file?.path ?? this.markdownView(view)?.file?.path ?? "untitled.md",
       save: async (view) => { await this.markdownView(view)?.save(); },
@@ -74,7 +78,7 @@ export default class NeovimPlugin extends Plugin {
     });
     this.app.workspace.onLayoutReady(() => {
       if (this.unloaded) return;
-      this.navigation.refresh();
+      this.refreshViews();
       if (this.settings.enabled) void this.restart();
       else this.controller.stop();
     });
@@ -109,6 +113,11 @@ export default class NeovimPlugin extends Plugin {
   private navigationError(error: unknown): void {
     console.error("Obsidian Neovim navigation:", error);
     new Notice(error instanceof Error ? `Neovim: ${error.message}` : "Neovim could not complete that workspace action.");
+  }
+
+  private refreshViews(): void {
+    this.navigation.refresh();
+    this.readingPosition.refresh();
   }
 
   private markdownView(editor: EditorView): MarkdownView | undefined {

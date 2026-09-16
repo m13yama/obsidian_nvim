@@ -6,6 +6,8 @@ import { EditorView } from "@codemirror/view";
 import { EditorController, type EditorPort, type StatusDetails } from "../src/editor/controller";
 import { neovimExtension } from "../src/editor/extension";
 import { EditorKeyRouter } from "../src/editor/key-router";
+import type { App, EditorPosition } from "obsidian";
+import { ReadingPositionSync } from "../src/obsidian/reading-position";
 
 async function waitFor(check: () => boolean, label: string): Promise<void> {
   const deadline = Date.now() + 3000;
@@ -94,6 +96,50 @@ test("zz centers the real Neovim cursor in CodeMirror, including counts, repeats
   key("Escape");
   await waitFor(() => status === "NORMAL" && view.state.doc.line(71).text === "zzline 71", "insert zz stays literal text");
   assert.equal(centered.length, 6);
+  assert.deepEqual(errors, []);
+});
+
+test("editing after reading scroll synchronizes the cursor before the next real Neovim command", async (t) => {
+  const dom = editorDOM();
+  const errors: Error[] = [];
+  let details: StatusDetails | undefined;
+  const controller = new EditorController({
+    status: (_status, value) => { details = value; }, commandLine: () => {}, message: () => {},
+    error: (error) => errors.push(error),
+  });
+  const text = Array.from({ length: 100 }, (_, i) => `第${i + 1}行 😀`).join("\n");
+  const view = new EditorView({ parent: dom.window.document.body,
+    state: EditorState.create({ doc: text, extensions: [neovimExtension(controller, { name: () => "reading.md", save: async () => {} })] }),
+  });
+  const scrolls: number[] = [];
+  const markdown = {
+    file: { path: "reading.md" }, mode: "source", getMode() { return this.mode; },
+    previewMode: { getScroll: () => 56.75 },
+    currentMode: { applyScroll: (scroll: number) => { scrolls.push(scroll); } },
+    editor: {
+      lineCount: () => view.state.doc.lines,
+      setCursor: (position: EditorPosition) => view.dispatch({ selection: { anchor: view.state.doc.line(position.line + 1).from + position.ch } }),
+    },
+    async setState(state: { mode: string }) { this.mode = state.mode; },
+  };
+  const sync = new ReadingPositionSync({ workspace: { getLeavesOfType: () => [{ view: markdown }] } } as unknown as App, () => controller.ready);
+  t.after(() => { sync.destroy(); controller.stop(); view.destroy(); dom.window.close(); });
+  sync.refresh();
+  view.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  await waitFor(() => details?.line === 1, "initial cursor");
+  await markdown.setState({ mode: "preview" });
+  view.contentDOM.blur();
+  await markdown.setState({ mode: "source" });
+  view.focus();
+  assert.equal(view.state.doc.toString(), text, "switching mode changes no note text");
+  assert.equal(view.state.selection.main.head, view.state.doc.line(57).from);
+  // Type immediately: queued host selection updates must precede the Vim command.
+  view.contentDOM.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true }));
+  await waitFor(() => view.state.doc.line(57).text === "57行 😀", "editing starts at the reading position");
+  assert.equal(view.state.doc.line(1).text, "第1行 😀", "the previous cursor location is not edited");
+  assert.equal(details?.line, 57);
+  assert.deepEqual(scrolls, [56.75]);
   assert.deepEqual(errors, []);
 });
 

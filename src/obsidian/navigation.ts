@@ -1,7 +1,7 @@
-import type { App, MarkdownView, Scope, View, WorkspaceLeaf } from "obsidian";
+import type { App, MarkdownView, Scope, TFile, View, WorkspaceLeaf } from "obsidian";
 import type { EditorKeyRouter } from "../editor/key-router";
 import type { NavigationDirection } from "../neovim/session";
-import { FileExplorerActions } from "./file-explorer";
+import { FileExplorerActions, focusedExplorerFile } from "./file-explorer";
 
 interface ScopeOverride {
   scope: Scope;
@@ -163,12 +163,34 @@ export class WorkspaceNavigation {
     this.prefix = undefined;
     if (key === "escape") { void this.focusEditor().catch(this.onError); return false; }
     if (view.getViewType() !== "file-explorer") return;
+    if (key === "enter") {
+      const file = focusedExplorerFile(view);
+      if (file) {
+        if (!event.repeat) void this.openExplorerFile(view, file).catch(this.onError);
+        return false;
+      }
+    }
     if (this.fileActions.handle(view, event)) return false;
     const arrow = TREE_KEYS[key];
     if (arrow) {
       this.sendTreeKey(view, arrow);
       return false;
     }
+  }
+
+  private async openExplorerFile(explorer: View, file: TFile): Promise<void> {
+    const workspace = this.app.workspace;
+    let existing: WorkspaceLeaf | undefined;
+    workspace.iterateAllLeaves((leaf) => {
+      if (this.isSidebar(leaf) || leaf.view.containerEl.ownerDocument !== explorer.containerEl.ownerDocument) return;
+      // View state also identifies notes in deferred background tabs. Revealing
+      // the existing leaf preserves its mode, cursor, and scroll position.
+      if (leaf.getViewState().state?.file === file.path && (!existing || leaf === this.lastEditor)) existing = leaf;
+    });
+    if (existing) return this.focusLeaf(existing);
+    const leaf = workspace.getLeaf(false);
+    await leaf.openFile(file, { active: true });
+    await this.focusLeaf(leaf);
   }
 
   private scrollReadingView(view: MarkdownView, event: KeyboardEvent): false | undefined {

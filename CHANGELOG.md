@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.7 — Beta — 2026-09-16
+
+- Move the editor and Neovim cursor to the source line at the top of the reading viewport when switching a note to editing. Preserve the reading scroll position and support keyboard and UI mode toggles in Live Preview and Source mode.
+- Fix file-explorer `Enter` leaving focus in the sidebar when a file is already open. Focus the existing tab without reopening it or changing its mode, cursor, or scroll position; newly opened files also receive focus. Preserve native folder and rename behavior.
+- Capture the position before the preview is hidden. Ignore unavailable measurements, file changes, and canceled or unloaded transitions; restore the original view method on unload.
+
+Validated with the production build, TypeScript checks, and all nine automated test files, including a real Neovim edit immediately after the cursor moves. In an isolated Obsidian 1.13.7 vault, verified wheel/scrollbar/`j`/`k` scrolling, `Ctrl+E` and header-button mode switches, Live Preview and Source mode, preserved note text, and the first Vim motion from the new position. Also verified explorer `Enter` on existing editing and reading tabs, another open tab, newly opened files, folders, and inline renaming; existing tabs retain their cursor and scroll position.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.6 — Beta — 2026-09-16
 
 - Use `Ctrl+0` to focus the left sidebar from editing and reading views. Remove the plugin's `Ctrl+W h` navigation mapping from both editors and sidebars.

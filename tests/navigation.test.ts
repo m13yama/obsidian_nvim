@@ -26,6 +26,132 @@ class TestScope {
   }
 }
 
+test("explorer Enter focuses existing notes without reopening and focuses newly opened notes", async (t) => {
+  const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
+  const { window } = dom;
+  const rootScope = new TestScope();
+  const leftSplit = {};
+  const center = {};
+  const errors: unknown[] = [];
+  const leaves: WorkspaceLeaf[] = [];
+  let opened = 0;
+  let requestedLeaf = 0;
+  let nativeEnter = 0;
+  let ready = true;
+  let enabled = true;
+  let finishOpen: (() => void) | undefined;
+  const makeLeaf = (type: string, path?: string) => {
+    const containerEl = window.document.createElement("div");
+    containerEl.innerHTML = type === "markdown" ? '<div class="cm-content" contenteditable="true" tabindex="0"></div>' +
+      '<div class="markdown-reading-view"><div class="markdown-preview-view" tabindex="0"></div></div>' :
+      '<div class="nav-files-container"><div class="has-focus">selected</div><input aria-label="Rename"></div>';
+    window.document.body.append(containerEl);
+    const scope = new TestScope(rootScope);
+    if (type === "file-explorer") scope.register([], "Enter", () => { nativeEnter++; });
+    const result = {
+      getRoot: () => type === "file-explorer" ? leftSplit : center,
+      getViewState: () => ({ type, state: { file: path } }),
+      openFile: async (file: { path: string }) => {
+        opened++;
+        await new Promise<void>((resolve) => { finishOpen = resolve; });
+        path = file.path;
+      },
+      view: undefined as unknown as View,
+    } as unknown as WorkspaceLeaf;
+    result.view = { scope, leaf: result, containerEl, getViewType: () => type, getMode: () => "source",
+      editor: { focus: () => containerEl.querySelector<HTMLElement>(".cm-content")!.focus() },
+      previewMode: { containerEl: containerEl.querySelector(".markdown-reading-view") },
+    } as unknown as View;
+    leaves.push(result);
+    return result;
+  };
+  const files = makeLeaf("file-explorer");
+  const first = makeLeaf("markdown", "First.md");
+  const reading = makeLeaf("markdown", "Reading.md");
+  (reading.view as MarkdownView).getMode = () => "preview";
+  const duplicate = makeLeaf("markdown", "First.md");
+  const explorer = Object.assign(files.view, {
+    tree: { focusedItem: { file: { path: "First.md", extension: "md" } as { path: string; extension?: string; children?: unknown[] } } },
+    fileBeingRenamed: false,
+  });
+  const workspace = {
+    activeLeaf: duplicate, leftSplit, rightSplit: {},
+    iterateAllLeaves: (callback: (leaf: WorkspaceLeaf) => void) => leaves.forEach(callback),
+    getMostRecentLeaf: () => files,
+    getLeaf: () => { requestedLeaf++; return first; },
+    revealLeaf: async () => {},
+    setActiveLeaf: (leaf: WorkspaceLeaf) => { workspace.activeLeaf = leaf; },
+  };
+  const navigation = new WorkspaceNavigation({ workspace, scope: rootScope } as unknown as App,
+    (parent) => new TestScope(parent as unknown as TestScope) as unknown as Scope,
+    new EditorKeyRouter(), () => ready, () => enabled, (error) => errors.push(error));
+  t.after(() => { navigation.destroy(); window.close(); });
+  window.addEventListener("keydown", (event) => {
+    if ((workspace.activeLeaf.view.scope as unknown as TestScope).handle(event) === false) event.preventDefault();
+  }, true);
+  const enter = (options: KeyboardEventInit = {}, target = window.document.activeElement!) => {
+    const event = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...options });
+    target.dispatchEvent(event);
+    return event;
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  navigation.refresh();
+  await navigation.focusSidebar("left");
+  assert.equal(enter().defaultPrevented, true);
+  await settle();
+  assert.equal(workspace.activeLeaf, duplicate, "prefer the last editor when a file is open in multiple panes");
+  assert.equal(window.document.activeElement, duplicate.view.containerEl.querySelector(".cm-content"));
+  assert.equal(opened, 0, "focusing an open note does not reload or reset its state");
+  assert.equal(requestedLeaf, 0, "no new tab is requested");
+
+  explorer.tree.focusedItem.file = { path: "Reading.md", extension: "md" };
+  await navigation.focusSidebar("left");
+  (window.document.activeElement as HTMLElement).blur();
+  assert.equal(window.document.activeElement, window.document.body);
+  enter();
+  await settle();
+  assert.equal(workspace.activeLeaf, reading, "body focus after tree navigation can activate another existing tab");
+  assert.equal(window.document.activeElement, reading.view.containerEl.querySelector(".markdown-preview-view"));
+  assert.equal((reading.view as MarkdownView).getMode(), "preview");
+  assert.equal(opened, 0);
+
+  await navigation.focusSidebar("left");
+  for (const options of [{ ctrlKey: true }, { shiftKey: true }, { altKey: true }, { metaKey: true }, { isComposing: true }, { keyCode: 229 }]) {
+    assert.equal(enter(options).defaultPrevented, false);
+  }
+  assert.equal(enter({}, files.view.containerEl.querySelector("input")!).defaultPrevented, false);
+  explorer.fileBeingRenamed = true;
+  assert.equal(enter().defaultPrevented, false);
+  explorer.fileBeingRenamed = false;
+  ready = false;
+  assert.equal(enter().defaultPrevented, false);
+  ready = true;
+  enabled = false;
+  assert.equal(enter().defaultPrevented, false);
+  enabled = true;
+  explorer.tree.focusedItem.file = { path: "Folder", children: [] };
+  const nativeBefore = nativeEnter;
+  assert.equal(enter().defaultPrevented, false);
+  assert.equal(nativeEnter, nativeBefore + 1, "folder Enter still reaches the native tree");
+  await settle();
+  assert.equal(workspace.activeLeaf, files);
+  assert.equal(opened, 0);
+
+  explorer.tree.focusedItem.file = { path: "New.md", extension: "md" };
+  assert.equal(enter({ repeat: true }).defaultPrevented, true);
+  assert.equal(opened, 0, "key repeat does not open more notes");
+  assert.equal(enter().defaultPrevented, true);
+  await settle();
+  assert.equal(opened, 1);
+  assert.equal(workspace.activeLeaf, files, "wait for file loading before focusing the view");
+  finishOpen!();
+  await settle();
+  assert.equal(workspace.activeLeaf, first);
+  assert.equal(window.document.activeElement, first.view.containerEl.querySelector(".cm-content"));
+  assert.equal(first.getViewState().state?.file, "New.md");
+  assert.deepEqual(errors, []);
+});
+
 test("reading view scrolls with j/k and leaves editing, controls, modifiers, and modal scopes alone", async (t) => {
   const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
   const { window } = dom;
