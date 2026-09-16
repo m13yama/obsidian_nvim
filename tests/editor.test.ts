@@ -8,6 +8,7 @@ import { neovimExtension } from "../src/editor/extension";
 import { EditorKeyRouter } from "../src/editor/key-router";
 import type { App, EditorPosition } from "obsidian";
 import { ReadingPositionSync } from "../src/obsidian/reading-position";
+import { NeovimSession } from "../src/neovim/session";
 
 async function waitFor(check: () => boolean, label: string): Promise<void> {
   const deadline = Date.now() + 3000;
@@ -154,7 +155,7 @@ test("resizing between navigation keys does not block the next key", async (t) =
   const port: EditorPort = {
     id: 9999,
     document: () => ({ id: 9999, revision: 0, name: "navigation.md", text: "note", cursor: [1, 0] }),
-    apply: () => {}, setConnected: () => {}, save: async () => {},
+    apply: () => {}, applyText: () => {}, setConnected: () => {}, save: async () => {},
   };
   t.after(() => controller.stop());
   controller.register(port);
@@ -431,5 +432,173 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
   controller.stop();
   key("r", true);
   assert.equal(hostHotkeys, 2, "stopped plugin releases the scope shortcut");
+  assert.deepEqual(errors, []);
+});
+
+test("file buffers retain undo across note switches, split views, and rename, and reset on deletion", async (t) => {
+  const { window } = editorDOM();
+  const errors: Error[] = [];
+  const controller = new EditorController({
+    status: () => {}, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
+  });
+  const fileA = { path: "first.md" }, fileB = { path: "second.md" };
+  const state = (file: { path: string }, text: string) => EditorState.create({ doc: text, extensions: [
+    neovimExtension(controller, { name: () => file.path, key: () => file, save: async () => {} }),
+  ] });
+  const first = new EditorView({ parent: window.document.body, state: state(fileA, "hello world") });
+  let second: EditorView | undefined;
+  t.after(() => { controller.stop(); first.destroy(); second?.destroy(); window.close(); });
+  const key = (view: EditorView, value: string) => view.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true }));
+  first.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  key(first, "d"); key(first, "w");
+  await waitFor(() => first.state.doc.toString() === "world", "first edit");
+  first.setState(state(fileB, "other note"));
+  key(first, "A"); key(first, "!"); key(first, "Escape");
+  await waitFor(() => first.state.doc.toString() === "other note!", "second note edit");
+  first.setState(state(fileA, "world"));
+  key(first, "u");
+  await waitFor(() => first.state.doc.toString() === "hello world", "undo retained after A to B to A");
+  key(first, "d"); key(first, "w");
+  await waitFor(() => first.state.doc.toString() === "world", "delete before opening split");
+  second = new EditorView({ parent: window.document.body, state: state(fileA, "world") });
+  second.focus();
+  key(second, "u");
+  await waitFor(() => first.state.doc.toString() === "hello world" && second!.state.doc.toString() === "hello world", "split uses the same undo history and updates both views");
+  // Each pane keeps its own cursor, including when the other pane changes text.
+  first.dispatch({ selection: { anchor: 6 } });
+  key(second, "0"); key(second, "x");
+  await waitFor(() => first.state.doc.toString() === "ello world" && second!.state.doc.toString() === "ello world", "text shared across views");
+  assert.equal(first.state.selection.main.head, 5, "background pane's selection maps through the edit without adopting the active cursor");
+  first.focus();
+  key(first, "l");
+  await waitFor(() => first.state.selection.main.head === 6, "focus restores the first pane's cursor");
+  fileA.path = "renamed.md";
+  controller.rename(fileA, fileA.path);
+  first.dispatch({}); second.dispatch({});
+  key(first, "u");
+  await waitFor(() => first.state.doc.toString() === "hello world", "renaming retains undo");
+  controller.forget(fileA);
+  first.setState(state({ path: "renamed.md" }, "replacement"));
+  key(first, "u");
+  key(first, "A"); key(first, "!"); key(first, "Escape");
+  await waitFor(() => first.state.doc.toString() === "replacement!", "recreated file gets a fresh undo buffer");
+  assert.deepEqual(errors, []);
+});
+
+test("cursor-only host changes preserve pending Neovim edits without sending text back", async (t) => {
+  const { window } = editorDOM();
+  const errors: Error[] = [];
+  let writes = 0;
+  const originalChange = NeovimSession.prototype.change;
+  t.mock.method(NeovimSession.prototype, "change", function (this: NeovimSession, ...args: Parameters<typeof originalChange>) {
+    writes++;
+    return originalChange.apply(this, args);
+  });
+  const controller = new EditorController({ status: () => {}, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error) });
+  const view = new EditorView({ parent: window.document.body, state: EditorState.create({ doc: "abcde", extensions: [
+    neovimExtension(controller, { name: () => "selection.md", save: async () => {} }),
+  ] }) });
+  t.after(() => { controller.stop(); view.destroy(); window.close(); });
+  const key = (key: string) => view.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  view.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  key("x");
+  view.dispatch({ selection: { anchor: 3 } });
+  key("l");
+  await waitFor(() => view.state.doc.toString() === "bcde" && view.state.selection.main.head === 3, "deletion survives mouse selection and next motion starts at its mapped position");
+  assert.equal(writes, 0, "selection changes never transmit document text");
+  key("u");
+  await waitFor(() => view.state.doc.toString() === "abcde", "cursor sync does not add an undo entry");
+  assert.deepEqual(errors, []);
+});
+
+test("host edits rebase against a native edit arriving before the diff is applied", async (t) => {
+  const { window } = editorDOM();
+  const errors: Error[] = [];
+  let mode = "", retries = 0, injected = false;
+  const originalChange = NeovimSession.prototype.change;
+  t.mock.method(NeovimSession.prototype, "change", async function (this: NeovimSession, ...args: Parameters<typeof originalChange>) {
+    if (!injected) {
+      injected = true;
+      await this.input("x");
+      await this.snapshot();
+    }
+    const accepted = await originalChange.apply(this, args);
+    if (!accepted) retries++;
+    return accepted;
+  });
+  const controller = new EditorController({ status: (value) => { mode = value; }, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error) });
+  const view = new EditorView({ parent: window.document.body, state: EditorState.create({ doc: "abcde", extensions: [
+    neovimExtension(controller, { name: () => "concurrent.md", save: async () => {} }),
+  ] }) });
+  t.after(() => { controller.stop(); view.destroy(); window.close(); });
+  view.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  await waitFor(() => mode === "NORMAL", "active note");
+  view.dispatch({ changes: { from: 5, insert: "日本😀" }, selection: { anchor: 9 } });
+  await waitFor(() => view.state.doc.toString() === "bcde日本😀" && retries > 0, "both edits survive changedtick retry");
+  view.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true }));
+  await waitFor(() => view.state.doc.toString() === "bcde日本", "the next key uses the rebased Unicode cursor");
+  assert.deepEqual(errors, []);
+});
+
+test("background buffer edits update its views and survive returning to that note", async (t) => {
+  const { window } = editorDOM();
+  const errors: Error[] = [];
+  let mode = "";
+  const controller = new EditorController({ status: (value) => { mode = value; }, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error) });
+  const create = (name: string, text: string) => new EditorView({ parent: window.document.body, state: EditorState.create({ doc: text, extensions: [
+    neovimExtension(controller, { name: () => name, save: async () => {} }),
+  ] }) });
+  const first = create("background.md", "original"), second = create("active.md", "active");
+  t.after(() => { controller.stop(); first.destroy(); second.destroy(); window.close(); });
+  first.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  await waitFor(() => mode === "NORMAL", "first buffer initialized");
+  second.focus();
+  const keys = ":lua for b,e in pairs(obsidian_bridge.buffers) do if vim.api.nvim_buf_get_name(b):match('/background.md$') then vim.api.nvim_buf_set_lines(b,0,-1,true,{'background edit'}) end end";
+  for (const key of [...keys, "Enter"]) second.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  await waitFor(() => first.state.doc.toString() === "background edit", "non-current buffer sends text changes");
+  assert.equal(second.state.doc.toString(), "active");
+  first.focus();
+  first.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key: "u", bubbles: true, cancelable: true }));
+  await waitFor(() => first.state.doc.toString() === "original", "background edit remains undoable after focus returns");
+  assert.deepEqual(errors, []);
+});
+
+test("transient file metadata during asynchronous note loading cannot contaminate another file's buffer", async (t) => {
+  const { window } = editorDOM();
+  const errors: Error[] = [];
+  const controller = new EditorController({ status: () => {}, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error) });
+  const first = { path: "first.md" }, second = { path: "second.md" };
+  let file = first;
+  let loaded = true;
+  const state = (text: string) => EditorState.create({ doc: text, extensions: [
+    neovimExtension(controller, { name: () => file.path, key: () => file, isLoaded: () => loaded, save: async () => {} }),
+  ] });
+  const view = new EditorView({ parent: window.document.body, state: state("hello world") });
+  t.after(() => { controller.stop(); view.destroy(); window.close(); });
+  const key = (key: string) => view.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  view.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  key("d"); key("w");
+  await waitFor(() => view.state.doc.toString() === "world", "edit first note");
+  loaded = false;
+  view.setState(state(""));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  file = second;
+  view.dispatch({ selection: { anchor: 0 } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  loaded = true;
+  view.setState(state("other note"));
+  key("A"); key("!"); key("Escape");
+  await waitFor(() => view.state.doc.toString() === "other note!", "second note is independent");
+  file = first;
+  view.dispatch({ selection: { anchor: 0 } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  view.setState(state("world"));
+  key("u");
+  await waitFor(() => view.state.doc.toString() === "hello world", "undo restores only the first note's original text");
   assert.deepEqual(errors, []);
 });

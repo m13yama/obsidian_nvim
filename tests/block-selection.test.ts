@@ -1,3 +1,4 @@
+import { recordSession } from "./session-recorder";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -28,7 +29,7 @@ end
   let signaled = false;
   const errors: Error[] = [];
   const session = new NeovimSession({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: true, initPath }, {
-    state: (value) => { state = value; if (value.lines) text = value.lines.join("\n"); },
+    ...recordSession((value, valueText) => { state = value; text = valueText; }),
     message: (value) => { if (value.includes("selection-ready")) signaled = true; },
     commandLine: () => {}, write: () => {}, exit: (error) => errors.push(error),
   });

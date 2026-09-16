@@ -22,8 +22,10 @@ export interface BlockSelectionRow {
 
 export interface NeovimState {
   id: number;
+  view: number;
+  tick: number;
+  /** Host selection version; unrelated to the buffer's changedtick. */
   revision: number;
-  lines?: string[];
   cursor: [number, number];
   anchor: [number, number];
   mode: string;
@@ -32,6 +34,26 @@ export interface NeovimState {
   recording: string;
   scroll?: "center";
   blockSelection?: BlockSelectionRow[];
+}
+
+export interface BufferEdit {
+  start: [number, number];
+  end: [number, number];
+  lines: string[];
+}
+
+export interface BufferChange {
+  first: number;
+  last: number;
+  lines: string[];
+}
+
+export interface NeovimChanges {
+  id: number;
+  tick: number;
+  changes: BufferChange[];
+  origin?: number;
+  initial?: boolean;
 }
 
 export interface EditorDocument {
@@ -55,6 +77,7 @@ export type NavigationDirection = "left" | "right" | "up" | "down" | "editor";
 
 export interface SessionEvents {
   state: (state: NeovimState) => void;
+  changes?: (changes: NeovimChanges) => void;
   commandLine: (text: string) => void;
   message: (text: string) => void;
   write: (id: number) => void;
@@ -65,6 +88,8 @@ export interface SessionEvents {
 export class NeovimSession {
   private rpc?: NeovimRpc;
   private activeId?: number;
+  private activeView?: number;
+  private buffers = new Set<number>();
   private commandLines = new Map<number, string>();
   private disposed = false;
   private startup?: { resolve: () => void; reject: (error: Error) => void };
@@ -141,19 +166,31 @@ export class NeovimSession {
     }
   }
 
-  async activate(document: EditorDocument): Promise<void> {
-    if (this.activeId !== undefined && this.activeId !== document.id) await this.input("<Esc>");
-    await this.lua("activate", [document.id, document.text.split("\n"), document.cursor, document.revision, document.name]);
+  async open(document: EditorDocument): Promise<void> {
+    if (this.buffers.has(document.id)) return;
+    await this.lua("open", [document.id, document.text.split("\n"), document.name]);
+    this.buffers.add(document.id);
+  }
+
+  async activate(document: EditorDocument, view = document.id, tick?: number): Promise<boolean> {
+    await this.open(document);
+    if (this.activeId !== undefined && (this.activeId !== document.id || this.activeView !== view)) await this.input("<Esc>");
+    const accepted = await this.lua("activate", [document.id, document.cursor, document.revision, view, tick ?? null]) as boolean;
+    if (!accepted) return false;
     this.activeId = document.id;
+    this.activeView = view;
+    return true;
   }
 
-  async sync(document: EditorDocument): Promise<void> {
-    await this.lua("sync", [document.id, document.text.split("\n"), document.cursor, document.revision]);
+  async change(id: number, tick: number, token: number, edits: BufferEdit[]): Promise<boolean> {
+    return await this.lua("change", [id, tick, token, edits]) as boolean;
   }
 
-  async moveCursor(id: number, cursor: [number, number]): Promise<void> {
-    await this.lua("cursor", [id, cursor]);
+  async moveCursor(id: number, cursor: [number, number], revision = 0, view = id, tick?: number): Promise<boolean> {
+    return await this.lua("cursor", [id, cursor, revision, view, tick ?? null]) as boolean;
   }
+
+  async rename(id: number, name: string): Promise<void> { await this.lua("rename", [id, name]); }
 
   async input(keys: string): Promise<void> {
     // nvim_input can accept only part of the input when its queue is full.
@@ -188,6 +225,7 @@ export class NeovimSession {
       this.activeId = undefined;
     }
     await this.lua("release", [id]);
+    this.buffers.delete(id);
   }
 
   async snapshot(): Promise<void> { await this.lua("snapshot", []); }
@@ -212,6 +250,7 @@ export class NeovimSession {
     if (this.disposed) return;
     if (method === "obsidian:ready") this.startup?.resolve();
     else if (method === "obsidian:state") this.events.state(args[0] as NeovimState);
+    else if (method === "obsidian:changes") this.events.changes?.(args[0] as NeovimChanges);
     else if (method === "obsidian:write") this.events.write(args[0] as number);
     else if (method === "obsidian:navigate" && ["left", "right", "up", "down", "editor"].includes(String(args[0]))) {
       this.events.navigate?.(args[0] as NavigationDirection);

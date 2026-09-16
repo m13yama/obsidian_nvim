@@ -1,3 +1,4 @@
+import { recordSession } from "./session-recorder";
 import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -116,7 +117,7 @@ async function start(t: TestContext, options: Partial<SessionOptions>) {
   const session = new NeovimSession({
     ...DEFAULT_SETTINGS, executable: process.env.NVIM_BIN ?? "nvim", ...options,
   }, {
-    state: (state) => { if (state.lines) text = state.lines.join("\n"); },
+    ...recordSession((_state, valueText) => { text = valueText; }),
     commandLine: () => {}, message: (message) => messages.push(message), write: () => {},
     exit: (error) => errors.push(error),
   });

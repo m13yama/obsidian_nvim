@@ -1,3 +1,4 @@
+import { recordSession } from "./session-recorder";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -20,10 +21,7 @@ test("real Neovim: editing, modes, undo, registers, search, Ex, Unicode, paste, 
   let writes = 0;
   const errors: Error[] = [];
   const events: SessionEvents = {
-    state: (update) => {
-      state = update;
-      if (update.lines) text = update.lines.join("\n");
-    },
+    ...recordSession((update, valueText) => { state = update; text = valueText; }),
     commandLine: (value) => { commandLine = value; },
     message: () => {},
     write: () => { writes++; },
@@ -81,7 +79,11 @@ test("real Neovim: editing, modes, undo, registers, search, Ex, Unicode, paste, 
   await waitFor(() => text === "other!", "edit second buffer");
   await session.activate({ id: 1, revision: 0, text: firstText, cursor: [1, 0], name: "test.md" });
   await waitFor(() => state?.id === 1 && text === firstText, "restore first buffer");
-  await session.sync({ id: 1, revision: 5, text: "external\n日本語", cursor: [2, 3], name: "test.md" });
+  const oldLines = firstText.split("\n");
+  assert.equal(await session.change(1, state!.tick, 1, [{
+    start: [0, 0], end: [oldLines.length - 1, Buffer.byteLength(oldLines.at(-1)!)], lines: ["external", "日本語"],
+  }]), true);
+  await session.moveCursor(1, [2, 3], 5);
   await waitFor(() => state?.revision === 5 && text === "external\n日本語", "external edit revision");
   assert.deepEqual(state?.cursor, [2, 3]);
   await session.input("i!");
@@ -127,7 +129,7 @@ vim.keymap.set('i', 'jj', '<Esc>')
   let state: NeovimState | undefined;
   let text = "";
   const session = new NeovimSession({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: true, initPath }, {
-    state: (value) => { state = value; if (value.lines) text = value.lines.join("\n"); },
+    ...recordSession((value, valueText) => { state = value; text = valueText; }),
     commandLine: () => {}, message: () => {}, write: () => {}, exit: () => {},
   });
   t.after(async () => { session.dispose(); await rm(directory, { recursive: true, force: true }); });
@@ -177,7 +179,7 @@ test("pane mappings notify Obsidian while preserving user mappings and supportin
     let text = "";
     const directions: string[] = [];
     const session = new NeovimSession({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: true, initPath, navigation }, {
-      state: (state) => { if (state.lines) text = state.lines.join("\n"); }, navigate: (direction) => directions.push(direction),
+      ...recordSession((_state, valueText) => { text = valueText; }), navigate: (direction) => directions.push(direction),
       commandLine: () => {}, message: () => {}, write: () => {}, exit: () => {},
     });
     try {

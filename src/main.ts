@@ -52,8 +52,17 @@ export default class NeovimPlugin extends Plugin {
     this.register(() => this.readingPosition.destroy());
     this.registerEvent(this.app.workspace.on("layout-change", () => this.refreshViews()));
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.refreshViews()));
+    this.registerEvent(this.app.vault.on("rename", (file) => this.controller.rename(file, file.path)));
+    this.registerEvent(this.app.vault.on("delete", (file) => this.controller.forget(file)));
     this.registerEditorExtension(neovimExtension(this.controller, {
       name: (view) => view.state.field(editorInfoField, false)?.file?.path ?? this.markdownView(view)?.file?.path ?? "untitled.md",
+      key: (view) => view.state.field(editorInfoField, false)?.file ?? this.markdownView(view)?.file ?? view,
+      isLoaded: (view) => {
+        const info = view.state.field(editorInfoField, false);
+        // TextFileView.data becomes null while clearing an old file, before
+        // its file reference and editor state have finished switching.
+        return !info || !("data" in info) || typeof info.data === "string";
+      },
       save: async (view) => { await this.markdownView(view)?.save(); },
       registerKeys: (view, handler) => this.keyRouter.register(view.contentDOM, handler),
     }));

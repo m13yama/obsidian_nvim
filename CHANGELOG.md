@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.8 — Beta — 2026-09-16
+
+- Keep one Neovim buffer per file, shared by split panes. Preserve undo across note switches, editor reconstruction, and file renames; keep pane cursors independent and release cached buffers on file deletion or process shutdown.
+- Separate text changes from cursor and mode notifications. Send host changes as UTF-8 ranges and Neovim changes as line patches, including edits to background buffers. Cursor movement no longer sends old note text back to Neovim or creates text undo entries.
+- Rebase pending host changes against concurrent Neovim edits and retry stale buffer versions. Check cursor coordinates against the buffer version as well, preserving edits and cursor placement when mouse input or a host plugin acts before a Neovim reply arrives.
+- Ignore temporary unloaded editors and stale file metadata during Obsidian's asynchronous note switching, preventing unload-time clearing from becoming a real note edit.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. New coverage exercises shared undo, renames/deletion, cursor-only synchronization, concurrent edits with Unicode, background buffers, exact line-patch boundaries, and transient editors during file loading. In an isolated Obsidian 1.13.7 vault, verified undo across note switches and split panes, independent pane cursors, rename continuity, and a cursor move immediately after deletion. Existing reading-position and explorer-Enter desktop checks also pass.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.7 — Beta — 2026-09-16
 
 - Move the editor and Neovim cursor to the source line at the top of the reading viewport when switching a note to editing. Preserve the reading scroll position and support keyboard and UI mode toggles in Live Preview and Source mode.

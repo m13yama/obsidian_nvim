@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.7 — Beta**
+**0.0.8 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.7 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.7), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.7.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.8 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.8), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.8.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -173,7 +173,7 @@ For a lazy.nvim plugin that requires Neovim windows, use `cond = not vim.g.obsid
 
 ### Settings managed by the bridge
 
-The plugin uses managed `acwrite` buffers named `obsidian://…`. These note buffers keep `bufhidden=hide`, `swapfile=false`, and `undofile=false`. The bridge enables `hidden`, disables `autowrite`/`autowriteall`, and starts with ShaDa disabled because Obsidian owns note paths and saving. Other user options are left intact. Restarting resets Neovim’s undo history and registers; it preserves text already synchronized to Obsidian.
+The plugin uses managed `acwrite` buffers named `obsidian://…`. Each file has one buffer, shared by its editor panes. Switching notes, rebuilding an editor, or renaming a file preserves that buffer and its undo history; each pane retains its own cursor. Buffers remain cached until the file is deleted or Neovim stops. These note buffers keep `bufhidden=hide`, `swapfile=false`, and `undofile=false`. The bridge enables `hidden`, disables `autowrite`/`autowriteall`, and starts with ShaDa disabled because Obsidian owns note paths and saving. Other user options are left intact. Restarting resets Neovim’s undo history and registers; it preserves text already synchronized to Obsidian.
 
 ## Current limits
 
@@ -185,7 +185,7 @@ The plugin integrates Neovim editing with Obsidian. UI and plugin compatibility 
 - In editing view, `j`/`k` operate on document lines. The Neovim window size is estimated from the editor, so wrapped-line motions, folds, and scrolling do not exactly match Obsidian’s Live Preview layout.
 - Clipboard shortcuts depend on the mode; see the shortcut table above. Cmd shortcuts stay with Obsidian. Vim registers are separate from native clipboard operations.
 - IME composition is left to CodeMirror and synchronized after composition commits. Japanese IME, dead-key layouts, and pop-out windows need manual verification in Obsidian. The command-line display currently lives in the main window.
-- Changes synchronize as one minimal text replacement. Large notes are not optimized yet. If a separate plugin edits a note while Neovim input is still in flight, the newer host revision takes priority; this can discard the pending Neovim edit. Split panes for the same note rely on Obsidian propagating changes between editors.
+- Text changes synchronize separately from cursor and mode updates. Host edits use changed ranges; Neovim emits patches for changed lines, including background buffers. Concurrent host edits are rebased against arriving Neovim changes and retried if their buffer version is stale. Overlapping edits follow CodeMirror's change-mapping rules; this is not a collaborative editing conflict UI. Initial loading and reconciliation after a whole-editor replacement still inspect the full note.
 
 ## Development
 
@@ -203,14 +203,15 @@ Set `NVIM_BIN=/absolute/path/to/nvim` when running tests if necessary. Tests req
 ```text
 Obsidian / CodeMirror 6
   ↕ keystrokes, note changes, cursor/selection updates
-Editor controller (ordered work queue, revision checks)
+Editor controller (file buffers, view bindings, pending text changes)
   ↕ MessagePack-RPC over stdin/stdout
 Local nvim --embed
   ↕ Lua callbacks
-Managed note buffers, modes, registers, mappings, undo
+One managed buffer per file, modes, registers, mappings, undo
 ```
 
 - `src/editor/`: CodeMirror extension, keyboard translation, Unicode positions, and process coordination.
+- `src/editor/document.ts`: per-file text state and rebasing of pending host changes; `controller.ts` manages shared buffers and independent editor selections. Cursor updates do not transmit or replace note text.
 - `src/neovim/`: process/RPC transport, session API, and the Lua bridge.
 - `src/main.ts`: Obsidian lifecycle, settings, status, and save integration.
 - CodeMirror and Obsidian are external to the bundle so the plugin uses Obsidian’s own editor classes.
