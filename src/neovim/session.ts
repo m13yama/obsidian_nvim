@@ -178,7 +178,7 @@ export class NeovimSession {
   async resize(width: number, height: number): Promise<void> {
     if (!this.rpc || this.disposed) throw new Error("Neovim is disconnected.");
     // Neovim can defer resizing while waiting for the rest of a command (e.g.
-    // Ctrl-W h). Waiting for its reply would block that next key in our queue.
+    // Ctrl-W l). Waiting for its reply would block that next key in our queue.
     this.rpc.notify("nvim_ui_try_resize", [Math.max(20, width), Math.max(5, height)]);
   }
 

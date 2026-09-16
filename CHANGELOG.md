@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.6 — Beta — 2026-09-16
+
+- Use `Ctrl+0` to focus the left sidebar from editing and reading views. Remove the plugin's `Ctrl+W h` navigation mapping from both editors and sidebars.
+- Add vscode-neovim file explorer operations: `a` / `Shift+A` create a note / folder, `r` renames, `d` deletes, `y` / `x` / `p` copy / cut / paste, `v` opens to the right, and `Shift+R` refreshes the tree. Use the focused folder or file's parent for creation and Obsidian's native handlers for selection, rename, deletion confirmation, trash preferences, and paste.
+- Ignore repeated operation keys and preserve typing in inputs, rename fields, and dialogs. Clear cut markers on unload.
+
+Validated with the production build, TypeScript checks, and all eight automated test files. Browser-driven keyboard checks in an isolated Obsidian 1.13.7 vault covered sidebar focus from editing and reading views, creation, rename, copy/move with filename collisions, opening to the right, refreshing, and deletion confirmation, cancellation, and local trash.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.5 — Beta — 2026-09-16
 
 - Fix reading-view `j` / `k` scrolling by targeting the inner Markdown renderer instead of its non-scrolling wrapper. Focus that same renderer when returning from a sidebar.

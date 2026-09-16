@@ -16,7 +16,7 @@ vim.o.autowriteall = false
 ${BLOCK_SELECTION_LUA}
 
 function M.setup_navigation()
-  for key, direction in pairs({ h = 'left', j = 'down', k = 'up', l = 'right', p = 'editor' }) do
+  for key, direction in pairs({ j = 'down', k = 'up', l = 'right', p = 'editor' }) do
     local target = direction
     local lhs = '<C-w>' .. key
     -- Preserve custom user mappings; these defaults replace only built-in window motions.

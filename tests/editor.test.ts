@@ -118,8 +118,8 @@ test("resizing between navigation keys does not block the next key", async (t) =
   controller.input(port, "<C-w>");
   await new Promise((resolve) => setTimeout(resolve, 30));
   controller.resize(port, 100, 30);
-  controller.input(port, "h");
-  await waitFor(() => direction === "left", "navigation finishes across a pending resize");
+  controller.input(port, "l");
+  await waitFor(() => direction === "right", "navigation finishes across a pending resize");
   assert.equal(controller.ready, true);
   assert.deepEqual(errors, []);
 });
@@ -320,6 +320,7 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
   let status = "";
   let hostHotkeys = 0;
   let readingToggles = 0;
+  let sidebarFocuses = 0;
   const errors: Error[] = [];
   const controller = new EditorController({
     status: (value) => { status = value; }, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
@@ -328,6 +329,7 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
   window.addEventListener("keydown", (event) => {
     if (router.handle(event)) { event.stopPropagation(); return; }
     if (event.ctrlKey && event.key === "e") { readingToggles++; event.preventDefault(); event.stopPropagation(); }
+    if (event.ctrlKey && event.key === "0") { sidebarFocuses++; event.preventDefault(); event.stopPropagation(); }
     if (event.ctrlKey && event.key === "r") { hostHotkeys++; event.preventDefault(); event.stopPropagation(); }
   }, true);
   const view = new EditorView({
@@ -350,6 +352,8 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
   await waitFor(() => status === "NORMAL", "normal mode");
   key("e", true);
   assert.equal(readingToggles, 1, "Normal Ctrl-E reaches Obsidian's reading toggle");
+  key("0", true);
+  assert.equal(sidebarFocuses, 1, "Normal Ctrl-0 reaches Obsidian's sidebar command");
   assert.equal(key("v", true).defaultPrevented, true);
   await waitFor(() => status === "VISUAL BLOCK", "Ctrl-V reaches real Neovim");
   key("j"); key("l");
@@ -367,6 +371,8 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
   await waitFor(() => status === "INSERT", "insert mode");
   key("e", true);
   assert.equal(readingToggles, 2, "Insert Ctrl-E reaches Obsidian's reading toggle");
+  key("0", true);
+  assert.equal(sidebarFocuses, 2, "Insert Ctrl-0 reaches Obsidian's sidebar command");
   assert.equal(key("v", true).defaultPrevented, false, "Insert Ctrl-V remains native paste");
   for (const value of ["a", "x", "s", "p", "f"]) assert.equal(key(value, true).defaultPrevented, false, `native Ctrl-${value}`);
   key("Escape");

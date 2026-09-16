@@ -128,8 +128,8 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
   const { window } = dom;
   const rootScope = new TestScope();
   let hostHotkeys = 0;
-  rootScope.register(null, "r", () => { hostHotkeys++; return false; });
-  const leftSplit = {};
+  rootScope.register(null, "r", (event) => { if (event.ctrlKey) { hostHotkeys++; return false; } });
+  const leftSplit = { collapsed: false };
   const rightSplit = {};
   const center = {};
   let ready = true;
@@ -163,6 +163,13 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     return result;
   };
   const files = leaf("file-explorer", leftSplit, 0);
+  const fileActions: string[] = [];
+  Object.assign(files.view, {
+    tree: { focusedItem: { file: { path: "Folder", children: [] } } },
+    createAbstractFile: async (type: string) => { fileActions.push(type); },
+    onKeyRename: () => { fileActions.push("rename"); },
+    onDeleteSelectedFiles: () => { fileActions.push("delete"); },
+  });
   const editor = leaf("markdown", center, 200);
   const secondEditor = leaf("markdown", center, 400);
   const outline = leaf("outline", rightSplit, 600);
@@ -207,28 +214,52 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     modal = undefined;
 
     await navigation.navigate("left");
+    assert.equal(workspace.activeLeaf, editor, "pane navigation does not focus the visible left sidebar");
+    leftSplit.collapsed = true;
+    await navigation.navigate("left");
+    assert.equal(workspace.activeLeaf, editor, "pane navigation does not reveal the collapsed left sidebar");
+    leftSplit.collapsed = false;
+    await navigation.navigate("right");
+    await navigation.navigate("left");
+    assert.equal(workspace.activeLeaf, editor, "directional navigation focuses the adjacent editor");
+    await navigation.focusSidebar("left");
     assert.equal(workspace.activeLeaf, files);
     const tree = files.view.containerEl.querySelector<HTMLElement>(".nav-files-container")!;
     assert.equal(window.document.activeElement, tree);
+    key(tree, "w", { ctrlKey: true }); key(tree, "h");
+    await settle();
+    assert.deepEqual(arrows, [], "retired Ctrl-W h does not collapse a folder");
+    assert.equal(workspace.activeLeaf, files);
     key(tree, "j");
     assert.equal(window.document.activeElement, window.document.body, "native ArrowDown releases DOM focus");
     for (const value of ["k", "h", "l", "Enter"]) key(window.document.activeElement as HTMLElement, value);
     assert.deepEqual(arrows, ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Enter"]);
+    for (const value of ["a", "A", "r", "d"]) {
+      assert.equal(key(window.document.body, value, { shiftKey: value === "A" }).defaultPrevented, true);
+    }
+    assert.deepEqual(fileActions, ["file", "folder", "rename", "delete"], "file actions work after native navigation blurs DOM focus");
+    assert.equal(key(window.document.body, "d", { repeat: true }).defaultPrevented, true);
+    assert.equal(fileActions.length, 4, "holding d does not repeatedly delete");
     const outside = window.document.createElement("button");
     window.document.body.append(outside);
     outside.focus();
     assert.equal(key(outside, "j").defaultPrevented, false, "a focused control outside the sidebar keeps its keys");
+    assert.equal(key(outside, "a").defaultPrevented, false);
     outside.blur();
     modal = new TestScope(rootScope);
     assert.equal(key(window.document.body, "j").defaultPrevented, false, "a modal keeps priority over sidebar aliases");
+    assert.equal(key(window.document.body, "d").defaultPrevented, false);
     modal = undefined;
     const rename = tree.querySelector("input")!;
-    for (const value of ["j", "h", "Escape"]) assert.equal(key(rename, value).defaultPrevented, false);
+    for (const value of ["j", "h", "Escape", "a", "A", "r", "d", "y", "x", "p"]) assert.equal(key(rename, value).defaultPrevented, false);
     assert.equal(arrows.length, 5, "renaming does not navigate the tree");
     assert.equal(workspace.activeLeaf, files);
     assert.equal(key(window.document.body, "j", { isComposing: true }).defaultPrevented, false);
+    assert.equal(key(window.document.body, "a", { isComposing: true }).defaultPrevented, false);
     navigationEnabled = false;
     assert.equal(key(window.document.body, "j").defaultPrevented, false);
+    assert.equal(key(window.document.body, "a").defaultPrevented, false);
+    assert.equal(fileActions.length, 4, "controls, modals, composition, and disabled navigation keep file actions inactive");
     navigationEnabled = true;
     key(window.document.body, "w", { ctrlKey: true }); key(window.document.body, "l");
     await settle();
@@ -239,6 +270,9 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     assert.equal(workspace.activeLeaf, secondEditor, "adjacent editor wins before the right sidebar");
     await navigation.navigate("right");
     assert.equal(workspace.activeLeaf, outline);
+    key(outline.view.containerEl, "w", { ctrlKey: true }); key(outline.view.containerEl, "h");
+    await settle();
+    assert.equal(workspace.activeLeaf, outline, "retired Ctrl-W h does not move to the adjacent editor");
     key(outline.view.containerEl, "Escape");
     await settle();
     assert.equal(workspace.activeLeaf, secondEditor, "Escape restores the most recent editor");

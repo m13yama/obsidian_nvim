@@ -1,6 +1,7 @@
 import type { App, MarkdownView, Scope, View, WorkspaceLeaf } from "obsidian";
 import type { EditorKeyRouter } from "../editor/key-router";
 import type { NavigationDirection } from "../neovim/session";
+import { FileExplorerActions } from "./file-explorer";
 
 interface ScopeOverride {
   scope: Scope;
@@ -9,7 +10,7 @@ interface ScopeOverride {
   observer?: MutationObserver;
 }
 
-const DIRECTIONS: Record<string, NavigationDirection> = { h: "left", j: "down", k: "up", l: "right", p: "editor" };
+const DIRECTIONS: Record<string, NavigationDirection> = { j: "down", k: "up", l: "right", p: "editor" };
 const TREE_KEYS: Record<string, string> = { j: "ArrowDown", k: "ArrowUp", h: "ArrowLeft", l: "ArrowRight" };
 const READING_SCROLL_STEP = 40;
 
@@ -20,6 +21,7 @@ export class WorkspaceNavigation {
   private lastEditor?: WorkspaceLeaf;
   private prefix?: { view: View; until: number };
   private disposed = false;
+  private fileActions: FileExplorerActions;
 
   constructor(
     private app: App,
@@ -28,7 +30,7 @@ export class WorkspaceNavigation {
     private ready: () => boolean,
     private navigationEnabled: () => boolean,
     private onError: (error: unknown) => void,
-  ) {}
+  ) { this.fileActions = new FileExplorerActions(app, onError); }
 
   refresh(): void {
     if (this.disposed) return;
@@ -87,6 +89,8 @@ export class WorkspaceNavigation {
       const element = leaf.view.containerEl;
       if (leaf === current || element.ownerDocument !== current.view.containerEl.ownerDocument || !element.getClientRects().length) return;
       const root = leaf.getRoot();
+      // The left sidebar has its own Ctrl+0 shortcut, separate from pane motions.
+      if (root === this.app.workspace.leftSplit) return;
       if (this.isSidebar(leaf) && "collapsed" in root && root.collapsed) return;
       const to = element.getBoundingClientRect();
       if (!to.width || !to.height) return;
@@ -99,11 +103,12 @@ export class WorkspaceNavigation {
       if (score < distance) { nearest = leaf; distance = score; }
     });
     if (nearest) await this.focusLeaf(nearest);
-    else if (horizontal && !this.isSidebar(current)) await this.focusSidebar(direction === "left" ? "left" : "right");
+    else if (direction === "right" && !this.isSidebar(current)) await this.focusSidebar("right");
   }
 
   destroy(): void {
     this.disposed = true;
+    this.fileActions.destroy();
     this.prefix = undefined;
     for (const [view, override] of this.overrides) this.restore(view, override);
     for (const [element, value] of this.tabIndexes) {
@@ -138,10 +143,16 @@ export class WorkspaceNavigation {
     // target body, while the sidebar leaf and its keyboard scope remain active.
     const bodyInActiveView = target === view.containerEl.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
     if (!target || (!view.containerEl.contains(target) && !bodyInActiveView) || target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")) return;
-    if (event.altKey || event.metaKey || event.shiftKey) return;
+    if (event.altKey || event.metaKey) return;
+    if (event.shiftKey) {
+      if (this.fileActions.handle(view, event)) { this.prefix = undefined; return false; }
+      return;
+    }
     const key = event.key.toLowerCase();
     if (this.prefix?.view === view && Date.now() < this.prefix.until) {
       this.prefix = undefined;
+      // Retired pane shortcut: do not reinterpret its h as a tree-collapse key.
+      if (key === "h") return false;
       const direction = DIRECTIONS[key];
       if (direction) { void this.navigate(direction).catch(this.onError); return false; }
     }
@@ -152,6 +163,7 @@ export class WorkspaceNavigation {
     this.prefix = undefined;
     if (key === "escape") { void this.focusEditor().catch(this.onError); return false; }
     if (view.getViewType() !== "file-explorer") return;
+    if (this.fileActions.handle(view, event)) return false;
     const arrow = TREE_KEYS[key];
     if (arrow) {
       this.sendTreeKey(view, arrow);

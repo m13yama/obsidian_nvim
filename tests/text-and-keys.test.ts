@@ -46,7 +46,7 @@ test("keyboard notation supports commands, modifiers, literals and native shortc
   assert.equal(toNeovimKey(key("f", { ctrlKey: true })), "<C-f>");
   assert.equal(toNeovimKey(key("f", { ctrlKey: true }), "i"), null);
   for (const mode of ["n", "i", "v", "\x16", "R"]) {
-    for (const value of ["s", "c", "p", "e"]) assert.equal(toNeovimKey(key(value, { ctrlKey: true }), mode), null);
+    for (const value of ["s", "c", "p", "e", "0"]) assert.equal(toNeovimKey(key(value, { ctrlKey: true }), mode), null);
   }
   assert.equal(toNeovimKey(key("v", { ctrlKey: true, shiftKey: true })), null);
   assert.equal(toNeovimKey(key("ArrowLeft", { altKey: true })), null);

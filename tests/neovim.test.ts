@@ -171,7 +171,7 @@ test("custom global and Markdown buffer zz mappings take priority over centering
 test("pane mappings notify Obsidian while preserving user mappings and supporting opt-out", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "obsidian-neovim-navigation-"));
   const initPath = join(directory, "init.lua");
-  await writeFile(initPath, "vim.keymap.set('n', '<C-w>h', 'iuser<Esc>')");
+  await writeFile(initPath, "vim.keymap.set('n', '<C-w>j', 'iuser<Esc>')");
   t.after(() => rm(directory, { recursive: true, force: true }));
   for (const navigation of [true, false]) {
     let text = "";
@@ -183,16 +183,16 @@ test("pane mappings notify Obsidian while preserving user mappings and supportin
     try {
       await session.start();
       await session.activate({ id: 1, revision: 0, text: "", cursor: [1, 0], name: "navigation.md" });
-      await session.input("<C-w>h");
+      await session.input("<C-w>h<C-w>j");
       await waitFor(() => text === "user", "custom window mapping takes priority");
-      assert.deepEqual(directions, []);
+      assert.deepEqual(directions, [], "Ctrl-W h has no Obsidian mapping and custom mappings stay intact");
       await session.input("<C-w>l");
       if (navigation) {
         await waitFor(() => directions.length === 1, "right pane notification");
         assert.deepEqual(directions, ["right"]);
-        await session.input("<C-w>j<C-w>k<C-w>p");
-        await waitFor(() => directions.length === 4, "other pane notifications");
-        assert.deepEqual(directions, ["right", "down", "up", "editor"]);
+        await session.input("<C-w>k<C-w>p");
+        await waitFor(() => directions.length === 3, "other pane notifications");
+        assert.deepEqual(directions, ["right", "up", "editor"]);
       } else {
         await session.input("A!<Esc>");
         await waitFor(() => text === "user!", "input after disabled navigation");

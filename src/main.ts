@@ -57,6 +57,7 @@ export default class NeovimPlugin extends Plugin {
     this.addCommand({ id: "restart", name: "Restart Neovim", callback: () => { void this.restart(); } });
     for (const side of ["left", "right"] as const) {
       this.addCommand({ id: `focus-${side}-sidebar`, name: `Focus ${side} sidebar`,
+        hotkeys: side === "left" ? [{ modifiers: ["Ctrl"], key: "0" }] : [],
         callback: () => { void this.navigation.focusSidebar(side).catch((error: unknown) => this.navigationError(error)); } });
     }
     this.addCommand({ id: "focus-editor", name: "Focus editor", callback: () => {
@@ -107,7 +108,7 @@ export default class NeovimPlugin extends Plugin {
 
   private navigationError(error: unknown): void {
     console.error("Obsidian Neovim navigation:", error);
-    new Notice("Neovim could not focus that pane. Check that the sidebar view is enabled.");
+    new Notice(error instanceof Error ? `Neovim: ${error.message}` : "Neovim could not complete that workspace action.");
   }
 
   private markdownView(editor: EditorView): MarkdownView | undefined {
@@ -147,7 +148,7 @@ class NeovimSettingTab extends PluginSettingTab {
         .onChange(async (value) => { await this.plugin.setStatusLineStyle(value as StatusLineStyle); }));
     new Setting(this.containerEl)
       .setName("Vim pane and sidebar navigation")
-      .setDesc("Ctrl+W then h/j/k/l moves between panes and sidebars; p returns to the editor. In the file explorer, h/j/k/l navigate and Esc returns to the note. Existing Neovim mappings take priority. Restart Neovim to apply.")
+      .setDesc("Ctrl+0 focuses the left sidebar. Ctrl+W then j/k/l moves down/up/right between panes and the right sidebar; p returns to the editor. Files uses vscode-neovim keys: a/A create a note/folder, r renames, d deletes, y/x/p copy/cut/paste, v opens to the right, R refreshes. Esc returns to the note. Existing Neovim mappings take priority. Restart Neovim to apply.")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.navigation).onChange(async (value) => {
         this.plugin.settings.navigation = value;
         await this.plugin.saveData(this.plugin.settings);
