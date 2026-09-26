@@ -57,17 +57,9 @@ A Powerline-style status line in Obsidian’s status bar shows:
 
 Choose **Settings → Neovim → Status line style → Powerline / Compact**. The style changes immediately. Compact shows the mode, cursor position, and any macro recording indicator. Narrow windows automatically hide extra details. Both styles follow Obsidian’s light/dark backgrounds and work without a Nerd Font.
 
-![Powerline and compact mode displays in dark and light themes](docs/status-line-preview.png)
-
-This is a standalone preview of the plugin’s actual display component.
-
 ## Cursor and shortcuts
 
 Normal mode has a steady green block and a subtle current-line highlight. Empty lines and positions after line ends have a visible cursor cell without adding spaces to the note. The block follows character widths, keeps emoji/combining characters together, and becomes an outline when the editor loses focus. Insert, Replace, and IME composition retain the native caret.
-
-![Normal-mode cursor on text, empty lines, and line ends in dark and light themes](docs/cursor-preview.png)
-
-This is a standalone preview of the actual CodeMirror component.
 
 ### Shortcut priority
 
@@ -93,10 +85,6 @@ In editing view, `zz` centers the cursor line in Obsidian's editor in Normal and
 `Ctrl+V` highlights the selected columns in purple. The range follows Neovim's selection, including reverse selections, Japanese text, emoji, combining characters, partial tabs, and the `selection` option. Virtual space on empty or short lines is highlighted when `virtualedit` allows it. Wrapped text is highlighted on each rendered line.
 
 The highlight is a separate visual layer that does not add text or change the browser's selection. Use Neovim's `y` and `p`/`P` for blockwise copying and pasting. The highlight clears when you leave Visual/Select mode, the note changes through Obsidian, or Neovim disconnects.
-
-![Blockwise selection in dark and light themes](docs/block-selection-preview.png)
-
-This preview uses selections captured from a real Neovim process and rendered by the actual CodeMirror component.
 
 ### Reading view
 
