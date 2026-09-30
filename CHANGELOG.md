@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.9 — Beta — 2026-10-01
+
+- Clear the file explorer selection after moving files or folders with `x` then `p`, while keeping keyboard focus on the moved item. Subsequent operations use the newly focused item after navigating elsewhere.
+- Preserve native selection after copy/paste and while a paste is still pending. Add regression coverage for multiple selected items, visible selection markers, focus, and the next file operation.
+
+Validated with the production build, TypeScript checks, and all ten automated test files using Neovim 0.12.5. A separate in-memory check using Obsidian 1.13.7's actual cut, paste, and tree-selection methods confirmed that selection clears, focus is preserved, and subsequent operations use the newly focused item.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.8 — Beta — 2026-09-16
 
 - Keep one Neovim buffer per file, shared by split panes. Preserve undo across note switches, editor reconstruction, and file renames; keep pane cursors independent and release cached buffers on file deletion or process shutdown.

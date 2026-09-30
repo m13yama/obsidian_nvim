@@ -7,7 +7,10 @@ type FileClipboardEvent = Pick<ClipboardEvent, "preventDefault"> & {
 // Obsidian's core explorer exposes these handlers at runtime, outside its public types.
 // Reuse them so selection, rename UI, deletion prompts, and folder moves stay native.
 interface FileExplorerView extends View {
-  tree?: { focusedItem?: { file: TAbstractFile } | null };
+  tree?: {
+    focusedItem?: { file: TAbstractFile } | null;
+    clearSelectedDoms?: () => void;
+  };
   fileBeingRenamed?: TAbstractFile | null;
   itemsBeingCut?: { selfEl: HTMLElement }[];
   createAbstractFile?: (type: "file" | "folder", parent: TFolder, newLeaf: boolean) => Promise<void>;
@@ -85,6 +88,8 @@ export class FileExplorerActions {
         if (this.clipboard === pasted && JSON.parse(pasted).operation === "cut") {
           this.clearCut();
           this.clipboard = "";
+          // Native paste reselects moved items; keep focus but end the selection.
+          view.tree?.clearSelectedDoms?.();
         }
         return;
       }

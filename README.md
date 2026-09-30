@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.8 — Beta**
+**0.0.9 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.8 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.8), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.8.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.9 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.9), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.9.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -113,7 +113,7 @@ When switching a note from reading to editing, the cursor starts at the source l
 
 Press Ctrl+W first, then the second key. In notes these are Normal-mode mappings; in sidebars the second key must follow within 1.5 seconds. The file explorer handles selection, folders, and scrolling through its existing keyboard behavior. `Enter` on a file focuses its note, preserving the mode, cursor, and scroll position when that file is already open. `Enter` on a folder keeps Obsidian's native behavior. Typing into sidebar search or rename fields does not trigger Vim navigation.
 
-File operation keys follow [vscode-neovim's explorer bindings](https://github.com/vscode-neovim/vscode-neovim#explorer-file-manipulation-bindings). Creating a note opens Obsidian's native new-note UI; creating a folder starts inline renaming. Copy/cut supports the explorer's selection, including folders, and paste uses Obsidian's collision handling and link-aware moves. Holding an operation key does not repeat it. Obsidian automatically tracks vault changes; `Shift+R` refreshes the displayed tree. These aliases use the core file explorer's internal handlers and report an error if an Obsidian version does not expose the required operation.
+File operation keys follow [vscode-neovim's explorer bindings](https://github.com/vscode-neovim/vscode-neovim#explorer-file-manipulation-bindings). Creating a note opens Obsidian's native new-note UI; creating a folder starts inline renaming. Copy/cut supports the explorer's selection, including folders, and paste uses Obsidian's collision handling and link-aware moves. After a cut is pasted, the selection clears while keyboard focus stays on the moved item. Holding an operation key does not repeat it. Obsidian automatically tracks vault changes; `Shift+R` refreshes the displayed tree. These aliases use the core file explorer's internal handlers and report an error if an Obsidian version does not expose the required operation.
 
 The command **Neovim: Focus left sidebar** defaults to `Ctrl+0`; the plugin no longer assigns `Ctrl+W h` to any navigation action. You can change this shortcut or assign shortcuts to **Neovim: Focus right sidebar** and **Neovim: Focus editor** under **Settings → Hotkeys**. Sidebars must contain an enabled view, such as Files or Outline. Tree-key aliases currently target the file explorer; other sidebar views keep their own internal controls.
 

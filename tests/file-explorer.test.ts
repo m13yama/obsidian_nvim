@@ -97,6 +97,74 @@ test("file clipboard preserves native multi-selection, consumes cuts, and cleans
   assert.deepEqual(errors, []);
 });
 
+test("pasted cuts clear native selection while preserving focus and copy selection", async (t) => {
+  for (const operation of ["cut", "copy"] as const) {
+    await t.test(operation, async (t) => {
+      const dom = new JSDOM();
+      t.after(() => dom.window.close());
+      const items = ["One.md", "Folder", "Next.md"].map((path) => ({
+        file: { path }, selfEl: dom.window.document.createElement("div"),
+      }));
+      const tree = {
+        focusedItem: items[0]!,
+        selectedDoms: new Set<typeof items[number]>(),
+        getSelectedItems: () => tree.selectedDoms.size ? [...tree.selectedDoms] : [tree.focusedItem],
+        selectItem: (item: typeof items[number]) => {
+          tree.selectedDoms.add(item);
+          item.selfEl.classList.add("is-selected");
+        },
+        clearSelectedDoms: () => {
+          for (const item of tree.selectedDoms) item.selfEl.classList.remove("is-selected");
+          tree.selectedDoms.clear();
+        },
+      };
+      tree.selectItem(items[0]!);
+      tree.selectItem(items[1]!);
+      type Clipboard = { clipboardData: { setData: (type: string, data: string) => void } };
+      const copied: string[][] = [];
+      const capture = (event: Clipboard, operation: "cut" | "copy") => {
+        const paths = tree.getSelectedItems().map((item) => item.file.path);
+        copied.push(paths);
+        event.clipboardData.setData("obsidian/files", JSON.stringify({ operation, paths }));
+      };
+      let finishPaste!: () => void;
+      const view = {
+        getViewType: () => "file-explorer", tree,
+        handleCut: (event: Clipboard) => capture(event, "cut"),
+        handleCopy: (event: Clipboard) => capture(event, "copy"),
+        handlePaste: async () => {
+          await new Promise<void>((resolve) => { finishPaste = resolve; });
+          // Obsidian selects pasted files and folders, then focuses the first item.
+          tree.clearSelectedDoms();
+          tree.selectItem(items[0]!);
+          tree.selectItem(items[1]!);
+          tree.focusedItem = items[0]!;
+        },
+      };
+      const errors: unknown[] = [];
+      const actions = new FileExplorerActions({} as App, (error) => errors.push(error));
+      t.after(() => actions.destroy());
+      const key = (key: string) => actions.handle(view as unknown as View,
+        new dom.window.KeyboardEvent("keydown", { key }));
+      key(operation === "cut" ? "x" : "y");
+      key("p");
+      assert.equal(tree.selectedDoms.size, 2, "selection is kept while paste is pending");
+      finishPaste();
+      await settle();
+      assert.equal(tree.selectedDoms.size, operation === "cut" ? 0 : 2);
+      for (const item of items.slice(0, 2)) {
+        assert.equal(item.selfEl.classList.contains("is-selected"), operation === "copy");
+      }
+      assert.equal(tree.focusedItem, items[0], "the pasted item keeps keyboard focus");
+      tree.focusedItem = items[2]!;
+      key("y");
+      assert.deepEqual(copied.at(-1), operation === "cut" ? ["Next.md"] : ["One.md", "Folder"],
+        "after a move, the next operation uses the newly focused item");
+      assert.deepEqual(errors, []);
+    });
+  }
+});
+
 test("missing explorer handlers report an error without falling back to destructive operations", async (t) => {
   const dom = new JSDOM();
   t.after(() => dom.window.close());
