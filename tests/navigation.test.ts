@@ -249,6 +249,125 @@ test("reading view scrolls with j/k and leaves editing, controls, modifiers, and
   assert.equal(scrolls.length, handled, "ignored keys never scroll the preview");
 });
 
+test("explorer gg, G, and page keys route through the view scope without leaking prefixes", async (t) => {
+  const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
+  const { window } = dom;
+  const rootScope = new TestScope();
+  const leftSplit = {};
+  const rightSplit = {};
+  const makeLeaf = (type: string, root: object) => {
+    const containerEl = window.document.createElement("div");
+    containerEl.innerHTML = '<div class="nav-files-container"><div class="has-focus"></div><input><textarea></textarea><select></select><div contenteditable="true"></div></div>';
+    window.document.body.append(containerEl);
+    const leaf = { getRoot: () => root, view: undefined as unknown as View } as WorkspaceLeaf;
+    leaf.view = { leaf, containerEl, scope: new TestScope(rootScope), getViewType: () => type } as unknown as View;
+    return leaf;
+  };
+  const files = makeLeaf("file-explorer", leftSplit);
+  const outline = makeLeaf("outline", rightSplit);
+  const container = files.view.containerEl.querySelector<HTMLElement>(".nav-files-container")!;
+  Object.defineProperty(container, "clientHeight", { value: 240 });
+  const items = Array.from({ length: 40 }, (_, index) => ({ file: { path: `${index}.md` } }));
+  let moves = 0;
+  const tree = {
+    root: { vChildren: { children: items } }, focusedItem: items[20],
+    setFocusedItem: (item: typeof items[number]) => { tree.focusedItem = item; moves++; },
+  };
+  let cuts = 0;
+  Object.assign(files.view, { tree, handleCut: () => { cuts++; } });
+  const workspace = {
+    activeLeaf: files, leftSplit, rightSplit,
+    iterateAllLeaves: (callback: (leaf: WorkspaceLeaf) => void) => [files, outline].forEach(callback),
+    getMostRecentLeaf: (root: object) => root === leftSplit ? files : outline,
+    revealLeaf: async () => {},
+    setActiveLeaf: (leaf: WorkspaceLeaf) => { workspace.activeLeaf = leaf; },
+  };
+  let ready = true;
+  let enabled = true;
+  let now = 1000;
+  t.mock.method(Date, "now", () => now);
+  const errors: unknown[] = [];
+  const navigation = new WorkspaceNavigation({ workspace, scope: rootScope } as unknown as App,
+    (parent) => new TestScope(parent as unknown as TestScope) as unknown as Scope,
+    new EditorKeyRouter(), () => ready, () => enabled, (error) => errors.push(error));
+  t.after(() => { navigation.destroy(); window.close(); });
+  window.addEventListener("keydown", (event) => {
+    if ((workspace.activeLeaf.view.scope as unknown as TestScope).handle(event) === false) {
+      event.preventDefault(); event.stopPropagation();
+    }
+  }, true);
+  const key = (key: string, options: KeyboardEventInit = {}, target: Element = window.document.body) => {
+    const event = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options });
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  navigation.refresh();
+  assert.equal(key("g"), true);
+  assert.equal(key("g", { repeat: true }), true);
+  assert.equal(moves, 0, "a single or held g does not jump");
+  key("g");
+  assert.equal(tree.focusedItem, items[0]);
+  key("G", { shiftKey: true });
+  assert.equal(tree.focusedItem, items.at(-1), "Shift-G works when the tree has released DOM focus");
+  for (const [value, index] of [["u", 34], ["b", 24], ["d", 29], ["f", 39]] as const) {
+    assert.equal(key(value, { ctrlKey: true }), true);
+    assert.equal(tree.focusedItem, items[index]);
+  }
+  key("u", { ctrlKey: true, repeat: true });
+  assert.equal(tree.focusedItem, items[34], "holding page keys keeps moving");
+
+  const assertFreshPrefix = () => {
+    const before = moves;
+    key("g");
+    assert.equal(moves, before, "the next g starts a fresh sequence");
+    key("g");
+    assert.equal(moves, before + 1);
+  };
+  for (const [value, options] of [["j", {}], ["x", {}], ["G", { shiftKey: true }], ["f", { ctrlKey: true }], ["a", { altKey: true }]] as const) {
+    key("g"); key(value, options);
+    assertFreshPrefix();
+  }
+  assert.equal(cuts, 1, "a canceled g sequence still allows native file actions");
+  key("g"); now += 1501;
+  assertFreshPrefix();
+  key("g");
+  key("w", { ctrlKey: true }); key("h");
+  assertFreshPrefix();
+
+  for (const options of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }, { isComposing: true }, { keyCode: 229 }]) {
+    assert.equal(key("g", options), false);
+    assert.equal(key("G", { shiftKey: true, ...options }), false);
+  }
+  for (const options of [{ shiftKey: true }, { altKey: true }, { metaKey: true }, { isComposing: true }]) {
+    assert.equal(key("d", { ctrlKey: true, ...options }), false);
+  }
+  for (const target of container.querySelectorAll("input, textarea, select, [contenteditable]")) {
+    key("g");
+    for (const [value, options] of [["g", {}], ["G", { shiftKey: true }], ["d", { ctrlKey: true }]] as const) {
+      assert.equal(key(value, options, target), false);
+    }
+    assertFreshPrefix();
+  }
+  for (const state of ["stopped", "disabled"] as const) {
+    key("g");
+    ready = state !== "stopped";
+    enabled = state !== "disabled";
+    assert.equal(key("g"), false);
+    assert.equal(key("G", { shiftKey: true }), false);
+    assert.equal(key("f", { ctrlKey: true }), false);
+    ready = enabled = true;
+    assertFreshPrefix();
+  }
+  key("g");
+  await navigation.focusSidebar("right");
+  assert.equal(key("g"), false);
+  assert.equal(key("G", { shiftKey: true }), false);
+  assert.equal(key("d", { ctrlKey: true }), false);
+  await navigation.focusSidebar("left");
+  assertFreshPrefix();
+  assert.deepEqual(errors, []);
+});
+
 test("view scopes prioritize editor keys, navigate native sidebar trees, and restore scopes on unload", async () => {
   const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
   const { window } = dom;

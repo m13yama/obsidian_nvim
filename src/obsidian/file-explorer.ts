@@ -4,11 +4,23 @@ type FileClipboardEvent = Pick<ClipboardEvent, "preventDefault"> & {
   clipboardData: Pick<DataTransfer, "getData" | "setData">;
 };
 
+interface ExplorerItem {
+  file: TAbstractFile;
+  selfEl?: HTMLElement;
+  info?: { hidden: boolean };
+  collapsed?: boolean;
+  vChildren?: { children: ExplorerItem[] };
+}
+
+export type ExplorerMotion = "first" | "last" | "half-up" | "half-down" | "page-up" | "page-down";
+
 // Obsidian's core explorer exposes these handlers at runtime, outside its public types.
 // Reuse them so selection, rename UI, deletion prompts, and folder moves stay native.
 interface FileExplorerView extends View {
   tree?: {
-    focusedItem?: { file: TAbstractFile } | null;
+    focusedItem?: ExplorerItem | null;
+    root?: { vChildren: { children: ExplorerItem[] } };
+    setFocusedItem?: (item: ExplorerItem, scrollIntoView: boolean) => void;
     clearSelectedDoms?: () => void;
   };
   fileBeingRenamed?: TAbstractFile | null;
@@ -44,6 +56,41 @@ export class FileExplorerActions {
     // Holding a key must not create or delete multiple files.
     if (!event.repeat) void this.run(explorer, event).catch(this.onError);
     return true;
+  }
+
+  moveFocus(view: View, motion: ExplorerMotion): void {
+    const explorer = view as FileExplorerView;
+    if (view.getViewType() !== "file-explorer" || explorer.fileBeingRenamed) return;
+    try {
+      const tree = explorer.tree;
+      if (!tree?.root?.vChildren || !tree.setFocusedItem) throw this.unavailable();
+      // The tree is virtualized: offscreen rows may not be in the DOM. Walk
+      // its sorted model, leaving collapsed folders and hidden items alone.
+      const items: ExplorerItem[] = [];
+      const visit = (children: ExplorerItem[]) => {
+        for (const item of children) {
+          if (item.info?.hidden) continue;
+          items.push(item);
+          if (!item.collapsed && item.vChildren) visit(item.vChildren.children);
+        }
+      };
+      visit(tree.root.vChildren.children);
+      let index = motion === "first" ? 0 : items.length - 1;
+      if (motion !== "first" && motion !== "last") {
+        const down = motion.endsWith("down");
+        const current = tree.focusedItem ? items.indexOf(tree.focusedItem) : -1;
+        if (current >= 0) {
+          const container = view.containerEl.querySelector<HTMLElement>(".nav-files-container") ?? view.containerEl;
+          const rowHeight = tree.focusedItem?.selfEl?.getBoundingClientRect().height ||
+            items.find((item) => item.selfEl?.getBoundingClientRect().height)?.selfEl?.getBoundingClientRect().height || 24;
+          const fraction = motion.startsWith("half") ? 0.5 : 1;
+          const rows = Math.max(1, Math.floor(container.clientHeight * fraction / rowHeight));
+          index = Math.max(0, Math.min(items.length - 1, current + (down ? rows : -rows)));
+        } else index = down ? 0 : items.length - 1;
+      }
+      const item = items[index];
+      if (item) tree.setFocusedItem(item, true);
+    } catch (error) { this.onError(error); }
   }
 
   destroy(): void {

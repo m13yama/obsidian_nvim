@@ -2,9 +2,80 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import type { App, TAbstractFile, TFolder, View } from "obsidian";
-import { FileExplorerActions } from "../src/obsidian/file-explorer";
+import { FileExplorerActions, type ExplorerMotion } from "../src/obsidian/file-explorer";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("explorer jumps follow sorted, expanded items including rows outside the DOM", (t) => {
+  const dom = new JSDOM('<div class="nav-files-container"></div>');
+  t.after(() => dom.window.close());
+  const containerEl = dom.window.document.body;
+  const makeItem = (path: string, hidden = false) => ({ file: { path }, info: { hidden } });
+  const child = makeItem("Expanded/Note.md");
+  const expanded = { ...makeItem("Expanded"), vChildren: { children: [child] }, collapsed: false };
+  const collapsed = { ...makeItem("Collapsed"), vChildren: { children: [makeItem("Collapsed/Hidden.md")] }, collapsed: true };
+  const last = makeItem("A first alphabetically, last in the tree.md");
+  const focused: unknown[] = [];
+  const tree = {
+    root: { vChildren: { children: [makeItem("Hidden", true), expanded, collapsed, last, makeItem("Hidden.md", true)] } },
+    setFocusedItem: (item: unknown, scroll: boolean) => { assert.equal(scroll, true); focused.push(item); },
+  };
+  const view = { getViewType: () => "file-explorer", tree, containerEl, fileBeingRenamed: false };
+  const errors: unknown[] = [];
+  const actions = new FileExplorerActions({} as App, (error) => errors.push(error));
+  const move = (motion: ExplorerMotion) => actions.moveFocus(view as unknown as View, motion);
+  move("first"); move("last");
+  assert.deepEqual(focused, [expanded, last]);
+  tree.root.vChildren.children = [expanded];
+  move("last");
+  assert.equal(focused.at(-1), child, "last item can be a child of an expanded folder");
+  expanded.collapsed = true;
+  move("last");
+  assert.equal(focused.at(-1), expanded, "collapsed children are skipped");
+  tree.root.vChildren.children = [];
+  move("first"); move("last");
+  tree.root.vChildren.children = [last];
+  view.fileBeingRenamed = true;
+  move("first");
+  assert.equal(focused.length, 4, "empty trees and active renames do not move focus");
+  assert.deepEqual(errors, []);
+});
+
+test("explorer page motions use the viewport, clamp to boundaries, and keep native focus", (t) => {
+  const dom = new JSDOM('<div class="nav-files-container"></div>');
+  t.after(() => dom.window.close());
+  const containerEl = dom.window.document.body;
+  const container = containerEl.querySelector<HTMLElement>(".nav-files-container")!;
+  Object.defineProperty(container, "clientHeight", { value: 240 });
+  const items = Array.from({ length: 30 }, (_, index) => {
+    const selfEl = dom.window.document.createElement("div");
+    selfEl.getBoundingClientRect = () => new dom.window.DOMRect(0, 0, 200, 24);
+    return { file: { path: `${index}.md` }, selfEl };
+  });
+  const tree = {
+    root: { vChildren: { children: items } }, focusedItem: items[0],
+    setFocusedItem: (item: typeof items[number], scroll: boolean) => { assert.equal(scroll, true); tree.focusedItem = item; },
+  };
+  const view = { getViewType: () => "file-explorer", tree, containerEl } as unknown as View;
+  const errors: unknown[] = [];
+  const actions = new FileExplorerActions({} as App, (error) => errors.push(error));
+  for (const [motion, index] of [
+    ["half-down", 5], ["page-down", 15], ["half-up", 10], ["page-up", 0], ["half-up", 0],
+    ["last", 29], ["page-down", 29], ["half-up", 24],
+  ] as const) {
+    actions.moveFocus(view, motion);
+    assert.equal(tree.focusedItem, items[index], motion);
+  }
+  tree.focusedItem = undefined;
+  actions.moveFocus(view, "page-down");
+  assert.equal(tree.focusedItem, items[0]);
+  tree.focusedItem = undefined;
+  actions.moveFocus(view, "page-up");
+  assert.equal(tree.focusedItem, items.at(-1));
+  assert.deepEqual(errors, []);
+  actions.moveFocus({ getViewType: () => "file-explorer" } as View, "last");
+  assert.match(String(errors[0]), /unavailable/, "missing internals are reported without throwing from a hotkey");
+});
 
 test("file actions use the explorer selection and native creation, rename, deletion, and split handlers", async (t) => {
   const dom = new JSDOM();

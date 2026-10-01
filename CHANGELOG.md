@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.10 — Beta — 2026-10-01
+
+- Add file explorer `gg` and `Shift+G` to focus the first and last visible tree items. Follow the current sort order, include offscreen items, and skip hidden items and collapsed folder contents.
+- Add `Ctrl+U` / `Ctrl+D` for half-page movement and `Ctrl+B` / `Ctrl+F` for full-page movement. Keep the focused item in view and support holding page shortcuts to repeat.
+- Cancel pending `gg` sequences on other keys, pane changes, or a 1.5-second timeout. Preserve typing in search and rename fields, IME composition, and shortcuts outside the file explorer.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. New coverage checks sorted and collapsed trees, offscreen items, page boundaries, key repeat, prefix cancellation, editable controls, and disabled navigation. These new shortcuts have not yet been manually verified in desktop Obsidian.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.9 — Beta — 2026-10-01
 
 - Clear the file explorer selection after moving files or folders with `x` then `p`, while keeping keyboard focus on the moved item. Subsequent operations use the newly focused item after navigating elsewhere.

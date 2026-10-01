@@ -1,7 +1,7 @@
 import type { App, MarkdownView, Scope, TFile, View, WorkspaceLeaf } from "obsidian";
 import type { EditorKeyRouter } from "../editor/key-router";
 import type { NavigationDirection } from "../neovim/session";
-import { FileExplorerActions, focusedExplorerFile } from "./file-explorer";
+import { FileExplorerActions, focusedExplorerFile, type ExplorerMotion } from "./file-explorer";
 
 interface ScopeOverride {
   scope: Scope;
@@ -12,6 +12,7 @@ interface ScopeOverride {
 
 const DIRECTIONS: Record<string, NavigationDirection> = { j: "down", k: "up", l: "right", p: "editor" };
 const TREE_KEYS: Record<string, string> = { j: "ArrowDown", k: "ArrowUp", h: "ArrowLeft", l: "ArrowRight" };
+const TREE_PAGES: Record<string, ExplorerMotion> = { u: "half-up", d: "half-down", b: "page-up", f: "page-down" };
 const READING_SCROLL_STEP = 40;
 
 /** View scopes run before Obsidian's application shortcuts, and below modal scopes. */
@@ -19,7 +20,7 @@ export class WorkspaceNavigation {
   private overrides = new Map<View, ScopeOverride>();
   private tabIndexes = new Map<HTMLElement, string | null>();
   private lastEditor?: WorkspaceLeaf;
-  private prefix?: { view: View; until: number };
+  private prefix?: { view: View; key: "w" | "g"; until: number };
   private disposed = false;
   private fileActions: FileExplorerActions;
 
@@ -35,6 +36,7 @@ export class WorkspaceNavigation {
   refresh(): void {
     if (this.disposed) return;
     const workspace = this.app.workspace;
+    if (this.prefix?.view !== workspace.activeLeaf?.view) this.prefix = undefined;
     if (workspace.activeLeaf?.view.getViewType() === "markdown") this.lastEditor = workspace.activeLeaf;
     const views = new Set<View>();
     workspace.iterateAllLeaves((leaf) => {
@@ -131,6 +133,8 @@ export class WorkspaceNavigation {
   }
 
   private handle(view: View, event: KeyboardEvent): false | undefined {
+    const prefix = this.prefix?.view === view && Date.now() < this.prefix.until ? this.prefix : undefined;
+    this.prefix = undefined;
     if (!this.ready() || event.defaultPrevented) return;
     if (this.router.handle(event)) return false;
     if (event.isComposing || event.keyCode === 229) return;
@@ -144,25 +148,39 @@ export class WorkspaceNavigation {
     const bodyInActiveView = target === view.containerEl.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
     if (!target || (!view.containerEl.contains(target) && !bodyInActiveView) || target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")) return;
     if (event.altKey || event.metaKey) return;
+    if (view.getViewType() === "file-explorer" && !event.ctrlKey && event.key === "G") {
+      this.fileActions.moveFocus(view, "last");
+      return false;
+    }
     if (event.shiftKey) {
-      if (this.fileActions.handle(view, event)) { this.prefix = undefined; return false; }
+      if (this.fileActions.handle(view, event)) return false;
       return;
     }
     const key = event.key.toLowerCase();
-    if (this.prefix?.view === view && Date.now() < this.prefix.until) {
-      this.prefix = undefined;
+    if (prefix?.key === "w") {
       // Retired pane shortcut: do not reinterpret its h as a tree-collapse key.
       if (key === "h") return false;
       const direction = DIRECTIONS[key];
       if (direction) { void this.navigate(direction).catch(this.onError); return false; }
     }
     if (event.ctrlKey) {
-      if (key === "w") { this.prefix = { view, until: Date.now() + 1500 }; return false; }
+      if (key === "w") { this.prefix = { view, key: "w", until: Date.now() + 1500 }; return false; }
+      const motion = TREE_PAGES[key];
+      if (view.getViewType() === "file-explorer" && motion) {
+        this.fileActions.moveFocus(view, motion);
+        return false;
+      }
       return;
     }
-    this.prefix = undefined;
     if (key === "escape") { void this.focusEditor().catch(this.onError); return false; }
     if (view.getViewType() !== "file-explorer") return;
+    if (event.key === "g") {
+      // Holding g is not the two distinct presses required for gg.
+      if (event.repeat) this.prefix = prefix?.key === "g" ? prefix : undefined;
+      else if (prefix?.key === "g") this.fileActions.moveFocus(view, "first");
+      else this.prefix = { view, key: "g", until: Date.now() + 1500 };
+      return false;
+    }
     if (key === "enter") {
       const file = focusedExplorerFile(view);
       if (file) {

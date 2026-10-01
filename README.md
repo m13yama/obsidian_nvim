@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.9 — Beta**
+**0.0.10 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.9 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.9), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.9.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.10 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.10), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.10.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -102,6 +102,9 @@ When switching a note from reading to editing, the cursor starts at the source l
 | `Ctrl+W`, then `j` / `k` / `l` | Focus the adjacent Obsidian pane below / above / to the right; at the right edge, reveal the existing right sidebar |
 | `Ctrl+W`, then `p` | Return to the most recently focused Markdown editor |
 | File explorer: `j` / `k` | Move down / up |
+| File explorer: `gg` / `Shift+G` | Focus the first / last visible tree item |
+| File explorer: `Ctrl+U` / `Ctrl+D` | Move up / down half a page |
+| File explorer: `Ctrl+B` / `Ctrl+F` | Move up / down a full page |
 | File explorer: `h` / `l` | Native left/right tree action: collapse / expand a folder, navigate the tree, or open a file |
 | File explorer: `Enter` | Open and focus the selected file; reuse its existing tab if open |
 | File explorer: `a` / `Shift+A` | Create a note / folder in the focused folder (or the focused file's parent) |
@@ -112,6 +115,8 @@ When switching a note from reading to editing, the cursor starts at the source l
 | Sidebar: `Esc` | Return to the editor |
 
 Press Ctrl+W first, then the second key. In notes these are Normal-mode mappings; in sidebars the second key must follow within 1.5 seconds. The file explorer handles selection, folders, and scrolling through its existing keyboard behavior. `Enter` on a file focuses its note, preserving the mode, cursor, and scroll position when that file is already open. `Enter` on a folder keeps Obsidian's native behavior. Typing into sidebar search or rename fields does not trigger Vim navigation.
+
+In the file explorer, press `g` twice within 1.5 seconds to jump to the top, or `Shift+G` to jump to the bottom. Jumps follow the current sort order, include offscreen items, and skip hidden items and collapsed folder contents. Page motions use the explorer's height and keep the focused item in view; holding a page shortcut repeats the movement.
 
 File operation keys follow [vscode-neovim's explorer bindings](https://github.com/vscode-neovim/vscode-neovim#explorer-file-manipulation-bindings). Creating a note opens Obsidian's native new-note UI; creating a folder starts inline renaming. Copy/cut supports the explorer's selection, including folders, and paste uses Obsidian's collision handling and link-aware moves. After a cut is pasted, the selection clears while keyboard focus stays on the moved item. Holding an operation key does not repeat it. Obsidian automatically tracks vault changes; `Shift+R` refreshes the displayed tree. These aliases use the core file explorer's internal handlers and report an error if an Obsidian version does not expose the required operation.
 
@@ -216,7 +221,7 @@ Use a scratch note for the first desktop test:
 6. Enable your normal config and verify its mappings, indentation, and search options. Repeat with a custom config that requires sibling Lua modules.
 7. Check the cursor on Japanese text, emoji, empty lines, and line ends in light/dark themes. Switch panes, use IME, and toggle Neovim to check caret restoration.
 8. Use `Ctrl+V`, `j`, `l` on a scratch note and verify that the highlighted columns follow the selection; delete with `d` and undo with `u`. Repeat across Japanese text, tabs, and empty lines. Verify native `Ctrl+V` still pastes in Insert mode, and `Ctrl+E` still switches editing/reading views. Check save, copy, quick switcher, and command palette shortcuts too.
-9. Use `Ctrl+0` to focus Files from editing and reading views, navigate with `h/j/k/l`, open a note with `Enter`, and return with `Esc`. Check that `Ctrl+W h` does not move between panes or collapse folders, and that renaming/search fields and dialogs accept ordinary typing.
+9. Use `Ctrl+0` to focus Files from editing and reading views, navigate with `h/j/k/l`, jump with `gg` / `Shift+G`, and move by half/full pages with `Ctrl+U/D` / `Ctrl+B/F`. Check these in a long tree with expanded and collapsed folders. Open a note with `Enter`, and return with `Esc`. Check that `Ctrl+W h` does not move between panes or collapse folders, and that renaming/search fields and dialogs accept ordinary typing.
    In a scratch folder, try `a` / `Shift+A` to create a note / folder, `r` to rename, `y` / `x` / `p` to copy / move, `v` to open to the right, and `d` to delete through the normal confirmation UI. Verify operations use the focused tree item, and canceling deletion preserves the file.
 10. Switch a long note to reading view with `Ctrl+E`. Use `j` / `k`, including holding either key, to scroll down / up. Check that search fields and dialogs accept ordinary typing, close the note search and verify scrolling resumes, then switch back to editing and verify normal Vim motions. In editing view, use `zz` and `50zz` to center the cursor line; repeat after scrolling with the mouse and in Visual mode.
 
