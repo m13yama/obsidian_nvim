@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.11 — Beta — 2026-10-07
+
+- Preserve the original cursor line and column when switching from reading to editing without scrolling or after moving less than one viewport height.
+- Move the cursor to the top visible source line only when the final reading position is at least one viewport height above or below the reading starting position. Reset the starting position on each reading session.
+- Capture the starting position after the renderer restores its scroll, including when a background tab becomes visible. Ignore stale render callbacks and unavailable measurements.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. Coverage includes the one-page boundary in both directions, short scrolls, repeated toggles, delayed rendering, hidden tabs, and a real Neovim edit immediately after the cursor moves. An existing block-cursor integration test intermittently timed out at its virtualedit line-end assertion; the full suite passed on rerun. The new threshold has not yet been manually verified in desktop Obsidian.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.10 — Beta — 2026-10-01
 
 - Add file explorer `gg` and `Shift+G` to focus the first and last visible tree items. Follow the current sort order, include offscreen items, and skip hidden items and collapsed folder contents.

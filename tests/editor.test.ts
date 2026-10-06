@@ -113,9 +113,14 @@ test("editing after reading scroll synchronizes the cursor before the next real 
     state: EditorState.create({ doc: text, extensions: [neovimExtension(controller, { name: () => "reading.md", save: async () => {} })] }),
   });
   const scrolls: number[] = [];
+  const readingContainer = dom.window.document.createElement("div");
+  readingContainer.innerHTML = '<div class="markdown-preview-view"></div>';
+  const readingScroller = readingContainer.firstElementChild as HTMLElement;
+  Object.defineProperty(readingScroller, "clientHeight", { value: 500 });
+  readingScroller.scrollTop = 1000;
   const markdown = {
     file: { path: "reading.md" }, mode: "source", getMode() { return this.mode; },
-    previewMode: { getScroll: () => 56.75 },
+    previewMode: { containerEl: readingContainer, getScroll: () => 56.75 },
     currentMode: { applyScroll: (scroll: number) => { scrolls.push(scroll); } },
     editor: {
       lineCount: () => view.state.doc.lines,
@@ -129,8 +134,21 @@ test("editing after reading scroll synchronizes the cursor before the next real 
   view.focus();
   await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
   await waitFor(() => details?.line === 1, "initial cursor");
+  const originalCursor = view.state.doc.line(11).from + 1;
+  view.dispatch({ selection: { anchor: originalCursor } });
+  await waitFor(() => details?.line === 11, "original cursor synchronizes");
+  for (const delta of [0, 499]) {
+    await markdown.setState({ mode: "preview" });
+    view.contentDOM.blur();
+    readingScroller.scrollTop += delta;
+    await markdown.setState({ mode: "source" });
+    view.focus();
+    assert.equal(view.state.selection.main.head, originalCursor, "a short reading scroll preserves the line and column");
+  }
+  assert.deepEqual(scrolls, []);
   await markdown.setState({ mode: "preview" });
   view.contentDOM.blur();
+  readingScroller.scrollTop += readingScroller.clientHeight;
   await markdown.setState({ mode: "source" });
   view.focus();
   assert.equal(view.state.doc.toString(), text, "switching mode changes no note text");
