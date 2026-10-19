@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -8,7 +11,7 @@ import { neovimExtension } from "../src/editor/extension";
 import { EditorKeyRouter } from "../src/editor/key-router";
 import type { App, EditorPosition } from "obsidian";
 import { ReadingPositionSync } from "../src/obsidian/reading-position";
-import { NeovimSession } from "../src/neovim/session";
+import { NeovimSession, type NeovimState } from "../src/neovim/session";
 import { DEFAULT_SETTINGS } from "../src/settings";
 
 async function waitFor(check: () => boolean, label: string): Promise<void> {
@@ -160,6 +163,95 @@ test("editing after reading scroll synchronizes the cursor before the next real 
   assert.equal(view.state.doc.line(1).text, "第1行 😀", "the previous cursor location is not edited");
   assert.equal(details?.line, 57);
   assert.deepEqual(scrolls, [56.75]);
+  assert.deepEqual(errors, []);
+});
+
+test("wrapped motions use each pane's latest visible size across queued focus changes", async (t) => {
+  const errors: Error[] = [];
+  let state: NeovimState | undefined;
+  const controller = new EditorController({
+    status: () => {}, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
+  });
+  const port = (id: number): EditorPort => ({
+    id, document: () => ({ id, revision: 0, name: `${id}.md`, text: "x".repeat(400), cursor: [1, 0] }),
+    apply: (value) => { state = value; }, applyText: () => {}, setConnected: () => {}, save: async () => {},
+  });
+  const first = port(1001), second = port(1002);
+  t.after(() => controller.stop());
+  controller.register(first); controller.register(second);
+  // ResizeObserver may report sizes before Neovim has finished starting.
+  controller.resize(first, 40, 20); controller.resize(second, 80, 25);
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
+  const moved = async (port: EditorPort, column: number) => {
+    await waitFor(() => state?.view === port.id && state.cursor[1] > 0, "wrapped motion after focus");
+    assert.deepEqual(state!.cursor, [1, column]);
+    controller.input(port, "gk");
+    await waitFor(() => state?.cursor[1] === 0, "return to the first screen line");
+  };
+  controller.focus(first); controller.input(first, "gj");
+  await moved(first, 40);
+  // Focus is asynchronous: the resize arrives while the other pane is active.
+  controller.focus(second); controller.resize(second, 90, 25); controller.input(second, "gj");
+  await moved(second, 90);
+  controller.resize(first, 60, 20);
+  controller.input(second, "gj");
+  await moved(second, 90);
+  // Hiding a pane must not replace its last usable dimensions with zeroes.
+  controller.resize(first, 0, 0);
+  controller.focus(first); controller.input(first, "gj");
+  await moved(first, 60);
+  // A notification queued before a switch must not resize the destination pane.
+  controller.focus(second); controller.resize(first, 45, 20); controller.input(second, "gj");
+  await moved(second, 90);
+  controller.focus(first); controller.input(first, "gj");
+  await moved(first, 45);
+  // Activation cancels partial commands before waiting for its resize reply.
+  controller.input(first, "g");
+  controller.focus(second); controller.resize(second, 100, 25); controller.input(second, "gj");
+  await moved(second, 100);
+  assert.deepEqual(errors, []);
+});
+
+test("mapped j/k retain the editor width when a focused CodeMirror view switches files", async (t) => {
+  const { window } = editorDOM();
+  const directory = await mkdtemp(join(tmpdir(), "obsidian-neovim-wrapped-"));
+  const initPath = join(directory, "init.lua");
+  await writeFile(initPath, "vim.opt.wrap = true\nvim.keymap.set('n', 'j', 'gj')\nvim.keymap.set('n', 'k', 'gk')\n");
+  const errors: Error[] = [];
+  let file = "first.md";
+  let width = 400;
+  const controller = new EditorController({
+    status: () => {}, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
+  });
+  const state = (text = "x".repeat(400)) => EditorState.create({ doc: text, extensions: [
+    neovimExtension(controller, { name: () => file, save: async () => {} }),
+  ] });
+  const view = new EditorView({ parent: window.document.body, state: state() });
+  t.after(async () => { controller.stop(); view.destroy(); window.close(); await rm(directory, { recursive: true, force: true }); });
+  Object.defineProperty(view.contentDOM, "clientWidth", { get: () => width });
+  Object.defineProperty(view.scrollDOM, "clientHeight", { value: 400 });
+  Object.defineProperty(view, "defaultCharacterWidth", { get: () => 10 });
+  Object.defineProperty(view, "defaultLineHeight", { get: () => 20 });
+  const key = (key: string) => view.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  const checkMovement = async (column: number) => {
+    key("j");
+    await waitFor(() => view.state.selection.main.head > 0, "mapped j moves on a wrapped line");
+    assert.equal(view.state.selection.main.head, column);
+    key("k");
+    await waitFor(() => view.state.selection.main.head === 0, "mapped k returns to the original position");
+  };
+  view.focus();
+  await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: true, initPath });
+  await checkMovement(40);
+  file = "second.md"; width = 800;
+  view.setState(state());
+  await checkMovement(80);
+  file = "third.md"; width = 600;
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "y".repeat(400) }, selection: { anchor: 0 } });
+  await checkMovement(60);
+  file = "first.md"; width = 400;
+  view.setState(state());
+  await checkMovement(40);
   assert.deepEqual(errors, []);
 });
 

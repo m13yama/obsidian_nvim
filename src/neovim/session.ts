@@ -212,11 +212,18 @@ export class NeovimSession {
     await this.request("nvim_paste", [text.replace(/\r\n?/g, "\n"), false, -1]);
   }
 
-  async resize(width: number, height: number): Promise<void> {
+  async resize(width: number, height: number, wait = false): Promise<void> {
     if (!this.rpc || this.disposed) throw new Error("Neovim is disconnected.");
+    const size = [Math.max(20, width), Math.max(5, height)];
+    // Activation has cancelled any pending command. Wait in that case so the
+    // first motion cannot overtake the resize through nvim_input's fast queue.
+    if (wait) {
+      await this.request("nvim_ui_try_resize", size);
+      return;
+    }
     // Neovim can defer resizing while waiting for the rest of a command (e.g.
     // Ctrl-W l). Waiting for its reply would block that next key in our queue.
-    this.rpc.notify("nvim_ui_try_resize", [Math.max(20, width), Math.max(5, height)]);
+    this.rpc.notify("nvim_ui_try_resize", size);
   }
 
   async release(id: number): Promise<void> {

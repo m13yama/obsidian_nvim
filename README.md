@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.12 — Beta**
+**0.0.13 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.12 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.12), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.12.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.13 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.13), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.13.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -178,7 +178,7 @@ The plugin integrates Neovim editing with Obsidian. UI and plugin compatibility 
 - All ordinary typing, including insert-mode typing, goes through Neovim. Obsidian autocomplete, automatic bracket insertion, and other plugins’ key handlers may behave differently. Conflicting Obsidian shortcuts may need to be unbound.
 - Use Obsidian to open, switch, and close notes. Your configured plugins load, but Neovim window/tab layouts, terminal buffers, floating windows, Telescope, completion menus, and `:edit`/`:split`/`:buffer` navigation are not integrated. Some plugins skip managed `acwrite` buffers or require file-read events that these virtual notes do not emit; loading a plugin does not guarantee it can attach to a note.
 - Characterwise, linewise, and blockwise Visual selections are displayed. Live Preview can hide Markdown syntax that has no visible text to highlight. Mouse selection is synchronized as a cursor position; use `v`/`V`/`Ctrl+V` for visual editing.
-- In editing view, `j`/`k` operate on document lines. The Neovim window size is estimated from the editor, so wrapped-line motions, folds, and scrolling do not exactly match Obsidian’s Live Preview layout.
+- In editing view, unmapped `j`/`k` operate on document lines. Custom mappings to `gj`/`gk` use Neovim's internal screen lines. Switching files or panes reapplies the destination editor's last visible size before its first key. The Neovim window size is estimated from the editor, so wrapped-line motions, folds, and scrolling do not exactly match Obsidian’s Live Preview layout.
 - Clipboard shortcuts depend on the mode; see the shortcut table above. Cmd shortcuts stay with Obsidian. Vim registers are separate from native clipboard operations.
 - IME composition is left to CodeMirror and synchronized after composition commits. Japanese IME, dead-key layouts, and pop-out windows need manual verification in Obsidian. The command-line display currently lives in the main window.
 - Text changes synchronize separately from cursor and mode updates. Host edits use changed ranges; Neovim emits patches for changed lines, including background buffers. Concurrent host edits are rebased against arriving Neovim changes and retried if their buffer version is stale. Overlapping edits follow CodeMirror's change-mapping rules; this is not a collaborative editing conflict UI. Initial loading and reconciliation after a whole-editor replacement still inspect the full note.

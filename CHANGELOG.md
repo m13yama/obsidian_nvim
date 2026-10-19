@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.13 — Beta — 2026-10-19
+
+- Fix wrapped-line motions using the previous pane's width or the initial Neovim width after switching files or panes. Retain each editor's last visible size and apply it before the first key in the newly activated editor.
+- Measure newly focused or replaced editors before input, and ignore zero-sized hidden editors and stale resize notifications from other panes.
+- Preserve custom `j` → `gj` and `k` → `gk` mappings. Keep resizing during partial commands non-blocking so navigation can finish.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. Regression tests use real Neovim and CodeMirror to cover startup measurements, pane switches, editor replacement, mapped wrapped-line movement, hidden panes, and partial commands. The change has not yet been manually verified in desktop Obsidian. Live Preview layout differences can still affect wrapped-line positions because Neovim's screen size is estimated.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.12 — Beta — 2026-10-19
 
 - Add **Ctrl+Tab switches editor tabs** in Neovim settings, enabled by default for new and existing installations. Let Obsidian handle `Ctrl+Tab` in Source mode and Live Preview so it can switch to the next editor tab; `Ctrl+Shift+Tab` switches back using Obsidian's hotkey assignments.

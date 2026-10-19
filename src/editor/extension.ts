@@ -69,7 +69,9 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
       this.unregisterKeys = host.registerKeys?.(view, this.keydown);
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(view.dom);
-      if (view.hasFocus) queueMicrotask(() => { if (!this.destroyed) controller.focus(this); });
+      this.resizeObserver.observe(view.contentDOM);
+      this.resizeObserver.observe(view.scrollDOM);
+      if (view.hasFocus) queueMicrotask(() => this.focus());
     }
 
     document(): EditorDocument & { key: FileKey } {
@@ -110,12 +112,12 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
         this.blockRows = [];
         controller.register(this);
         this.registered = true;
-        if (this.view.hasFocus) controller.focus(this);
+        if (this.view.hasFocus) this.focus();
       } else if (name !== this.name) {
         this.name = name;
         controller.rename(key, name);
       }
-      if (update.focusChanged && this.view.hasFocus) { controller.focus(this); this.resize(); }
+      if (update.focusChanged && this.view.hasFocus) this.focus();
       const hostTransactions = rebound ? [] : update.transactions.filter((transaction) => !transaction.annotation(fromNeovim));
       for (const transaction of hostTransactions) {
         if (transaction.docChanged) controller.hostChanged(this, transaction.startState.doc, transaction.changes);
@@ -191,7 +193,7 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
         this.blockRows = [];
         this.decorations = Decoration.none;
       }
-      if (connected && this.view.hasFocus) queueMicrotask(() => { if (!this.destroyed) controller.focus(this); });
+      if (connected && this.view.hasFocus) queueMicrotask(() => this.focus());
       // Request a view update outside constructors/current CodeMirror transactions.
       queueMicrotask(() => { if (!this.destroyed) this.view.dispatch({ annotations: fromNeovim.of(true) }); });
     }
@@ -223,6 +225,8 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
       if (key === null) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      // A replaced CM state can receive a key before its first resize callback.
+      this.resize();
       controller.input(this, key);
     };
 
@@ -267,7 +271,14 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
       }, 0);
     };
 
+    private focus(): void {
+      if (this.destroyed || !this.view.hasFocus || !this.currentFile()) return;
+      this.resize();
+      controller.focus(this);
+    }
+
     private resize(): void {
+      if (this.destroyed || !this.currentFile()) return;
       controller.resize(this, Math.floor(this.view.contentDOM.clientWidth / (this.view.defaultCharacterWidth || 8)),
         Math.floor(this.view.scrollDOM.clientHeight / (this.view.defaultLineHeight || 20)));
     }

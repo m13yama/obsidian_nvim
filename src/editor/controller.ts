@@ -43,6 +43,7 @@ interface CursorIntent { text: Text; head: number; revision: number }
 /** Files own buffers/undo; editor bindings own selection and focus. */
 export class EditorController {
   private ports = new Map<number, EditorPort>();
+  private sizes = new Map<number, { width: number; height: number }>();
   private bindings = new Map<number, Binding>();
   private files = new Map<FileKey, FileBuffer>();
   private buffers = new Map<number, FileBuffer>();
@@ -65,6 +66,7 @@ export class EditorController {
   unregister(id: number, lastText?: Text): void {
     const file = this.bindings.get(id)?.file;
     this.ports.delete(id);
+    this.sizes.delete(id);
     this.bindings.delete(id);
     if (file && !this.fileBindings(file).length) file.detachedText = lastText ?? file.text;
     if (this.activePort === id) {
@@ -224,7 +226,21 @@ export class EditorController {
   }
 
   resize(port: EditorPort, width: number, height: number): void {
-    if (this.ready && port.id === this.activePort) this.enqueue((session) => session.resize(width, height));
+    const id = port.id;
+    // Hidden/unloading editors can report zero dimensions. Keep the last
+    // usable size, including before startup and while another pane is active.
+    if (this.ports.get(id) !== port || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+    const previous = this.sizes.get(id);
+    if (previous?.width === width && previous.height === height) return;
+    const size = { width, height };
+    this.sizes.set(id, size);
+    this.enqueue(async (session) => {
+      // Focus changes are queued too. Check the owner when this runs, so an
+      // old pane's notification cannot resize the newly activated pane.
+      if (this.ports.get(id) === port && this.activePort === id && this.sizes.get(id) === size) {
+        await session.resize(size.width, size.height);
+      }
+    });
   }
 
   private bind(port: EditorPort): void {
@@ -303,7 +319,13 @@ export class EditorController {
     this.activePort = binding.port.id;
     for (let retries = 0; retries < 100; retries++) {
       if (!this.live(binding)) return;
-      if (await session.activate({ id: binding.file.id, name: binding.file.name, text: "", cursor: this.cursor(binding, cursor), revision: cursor.revision }, binding.port.id, binding.file.tick)) return;
+      if (await session.activate({ id: binding.file.id, name: binding.file.name, text: "", cursor: this.cursor(binding, cursor), revision: cursor.revision }, binding.port.id, binding.file.tick)) {
+        // Apply this pane's size before the first key. The initial observer or
+        // focus notification often arrived before activation completed.
+        const size = this.sizes.get(binding.port.id);
+        if (this.live(binding) && size) await session.resize(size.width, size.height, true);
+        return;
+      }
       await this.flush(session, binding.file);
     }
     throw new Error("The active note could not be synchronized with Neovim.");
