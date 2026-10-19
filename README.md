@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.11 — Beta**
+**0.0.12 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.11 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.11), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.11.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.12 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.12), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.12.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -74,7 +74,10 @@ Editor shortcuts are handled through Obsidian's view scopes, before application 
 | `Ctrl+S` / `Ctrl+C` / `Ctrl+P` | Obsidian save / copy / quick switcher | Same |
 | `Ctrl+E` | Obsidian editing / reading view toggle | Same |
 | `Ctrl+0` | Focus the left sidebar | Same |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Obsidian next / previous tab (setting below) | Same |
 | `Ctrl+Shift+…`, `Alt+…`, macOS `Cmd+…` | Obsidian / OS shortcuts | Same |
+
+**Settings → Neovim → Ctrl+Tab switches editor tabs** is enabled by default, including when upgrading. It lets Obsidian handle `Ctrl+Tab` while editing in Source mode or Live Preview, so you can switch to the next tab without leaving the editor. `Ctrl+Shift+Tab` switches back. Changes apply immediately, without restarting Neovim. Turn the setting off to send `Ctrl+Tab` to your Neovim mappings again; `Ctrl+Shift+Tab` remains an Obsidian shortcut. These shortcuts follow your Obsidian hotkey assignments.
 
 Other Ctrl keys go to Neovim. To avoid a collision with a Vim Ctrl command, assign your Obsidian command a Ctrl+Shift shortcut. In Normal mode, paste from a Vim register with `p`/`P`, use the context-menu Paste action, or enter Insert mode for native `Ctrl+V`. `Ctrl+C` remains copy; use `Esc` or `Ctrl+[` to leave Insert mode.
 
@@ -221,6 +224,7 @@ Use a scratch note for the first desktop test:
 6. Enable your normal config and verify its mappings, indentation, and search options. Repeat with a custom config that requires sibling Lua modules.
 7. Check the cursor on Japanese text, emoji, empty lines, and line ends in light/dark themes. Switch panes, use IME, and toggle Neovim to check caret restoration.
 8. Use `Ctrl+V`, `j`, `l` on a scratch note and verify that the highlighted columns follow the selection; delete with `d` and undo with `u`. Repeat across Japanese text, tabs, and empty lines. Verify native `Ctrl+V` still pastes in Insert mode, and `Ctrl+E` still switches editing/reading views. Check save, copy, quick switcher, and command palette shortcuts too.
+   Open several tabs and check `Ctrl+Tab` / `Ctrl+Shift+Tab` in Source mode and Live Preview, in both Normal and Insert modes. Toggle **Ctrl+Tab switches editor tabs** off and on without restarting: off should send `Ctrl+Tab` to Neovim; on should restore Obsidian tab switching. Plain Tab and Shift+Tab should keep their existing editing behavior.
 9. Use `Ctrl+0` to focus Files from editing and reading views, navigate with `h/j/k/l`, jump with `gg` / `Shift+G`, and move by half/full pages with `Ctrl+U/D` / `Ctrl+B/F`. Check these in a long tree with expanded and collapsed folders. Open a note with `Enter`, and return with `Esc`. Check that `Ctrl+W h` does not move between panes or collapse folders, and that renaming/search fields and dialogs accept ordinary typing.
    In a scratch folder, try `a` / `Shift+A` to create a note / folder, `r` to rename, `y` / `x` / `p` to copy / move, `v` to open to the right, and `d` to delete through the normal confirmation UI. Verify operations use the focused tree item, and canceling deletion preserves the file.
 10. Switch a long note to reading view with `Ctrl+E`. Use `j` / `k`, including holding either key, to scroll down / up. Check that search fields and dialogs accept ordinary typing, close the note search and verify scrolling resumes, then switch back to editing and verify normal Vim motions. Switching back without scrolling or after moving less than one viewport height should preserve the original cursor line and column; moving a full viewport or more in either direction should place the cursor at the top visible source line. Repeat with the mouse wheel, scrollbar, and view toggle button. In editing view, use `zz` and `50zz` to center the cursor line; repeat after scrolling with the mouse and in Visual mode.

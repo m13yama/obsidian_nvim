@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.12 — Beta — 2026-10-19
+
+- Add **Ctrl+Tab switches editor tabs** in Neovim settings, enabled by default for new and existing installations. Let Obsidian handle `Ctrl+Tab` in Source mode and Live Preview so it can switch to the next editor tab; `Ctrl+Shift+Tab` switches back using Obsidian's hotkey assignments.
+- Apply setting changes immediately to open editors. Turn the setting off to send `Ctrl+Tab` to Neovim again; `Ctrl+Shift+Tab` remains with Obsidian.
+- Preserve ordinary Tab and Shift+Tab editing, other shortcut routing, and IME composition.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. Regression coverage checks shortcut routing across Neovim modes, immediate toggling in a connected editor, and host shortcuts in Normal and Insert modes. The new setting has not yet been manually verified in desktop Obsidian.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.11 — Beta — 2026-10-07
 
 - Preserve the original cursor line and column when switching from reading to editing without scrolling or after moving less than one viewport height.

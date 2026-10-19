@@ -54,3 +54,19 @@ test("keyboard notation supports commands, modifiers, literals and native shortc
   assert.equal(toNeovimKey(key("Process", { isComposing: true })), null);
   assert.equal(toNeovimKey(key("@", { ctrlKey: true, altKey: true, getModifierState: () => true })), null);
 });
+
+test("Ctrl-Tab belongs to Obsidian by default and can be returned to Neovim in every mode", () => {
+  for (const mode of ["n", "i", "R", "v", "V", "\x16", "no", "c"]) {
+    assert.equal(toNeovimKey(key("Tab", { ctrlKey: true }), mode), null);
+    assert.equal(toNeovimKey(key("Tab", { ctrlKey: true }), mode, true), null);
+    assert.equal(toNeovimKey(key("Tab", { ctrlKey: true }), mode, false), "<C-Tab>");
+    for (const enabled of [true, false]) {
+      assert.equal(toNeovimKey(key("Tab", { ctrlKey: true, shiftKey: true }), mode, enabled), null);
+      assert.equal(toNeovimKey(key("Tab"), mode, enabled), "<Tab>");
+      assert.equal(toNeovimKey(key("Tab", { shiftKey: true }), mode, enabled), "<S-Tab>");
+      for (const modifiers of [{ altKey: true }, { metaKey: true }, { isComposing: true }]) {
+        assert.equal(toNeovimKey(key("Tab", { ctrlKey: true, ...modifiers }), mode, enabled), null);
+      }
+    }
+  }
+});

@@ -7,6 +7,7 @@ export interface NeovimSettings {
   enabled: boolean;
   statusLineStyle: StatusLineStyle;
   navigation: boolean;
+  ctrlTabSwitchesTabs: boolean;
 }
 
 export const DEFAULT_SETTINGS: NeovimSettings = {
@@ -16,4 +17,5 @@ export const DEFAULT_SETTINGS: NeovimSettings = {
   enabled: true,
   statusLineStyle: "powerline",
   navigation: true,
+  ctrlTabSwitchesTabs: true,
 };

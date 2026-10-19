@@ -65,6 +65,7 @@ export default class NeovimPlugin extends Plugin {
       },
       save: async (view) => { await this.markdownView(view)?.save(); },
       registerKeys: (view, handler) => this.keyRouter.register(view.contentDOM, handler),
+      ctrlTabSwitchesTabs: () => this.settings.ctrlTabSwitchesTabs,
     }));
     this.addSettingTab(new NeovimSettingTab(this.app, this));
     this.addCommand({ id: "restart", name: "Restart Neovim", callback: () => { void this.restart(); } });
@@ -164,6 +165,13 @@ class NeovimSettingTab extends PluginSettingTab {
         .addOption("compact", "Compact")
         .setValue(this.plugin.settings.statusLineStyle)
         .onChange(async (value) => { await this.plugin.setStatusLineStyle(value as StatusLineStyle); }));
+    new Setting(this.containerEl)
+      .setName("Ctrl+Tab switches editor tabs")
+      .setDesc("Let Obsidian handle Ctrl+Tab in Source mode and Live Preview. Ctrl+Shift+Tab switches back. Turn off to send Ctrl+Tab to Neovim. Changes apply immediately.")
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.ctrlTabSwitchesTabs).onChange(async (value) => {
+        this.plugin.settings.ctrlTabSwitchesTabs = value;
+        await this.plugin.saveData(this.plugin.settings);
+      }));
     new Setting(this.containerEl)
       .setName("Vim pane and sidebar navigation")
       .setDesc("Ctrl+0 focuses the left sidebar. Ctrl+W then j/k/l moves down/up/right between panes and the right sidebar; p returns to the editor. Files uses vscode-neovim keys: a/A create a note/folder, r renames, d deletes, y/x/p copy/cut/paste, v opens to the right, R refreshes. Esc returns to the note. Existing Neovim mappings take priority. Restart Neovim to apply.")

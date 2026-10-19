@@ -9,6 +9,7 @@ import { EditorKeyRouter } from "../src/editor/key-router";
 import type { App, EditorPosition } from "obsidian";
 import { ReadingPositionSync } from "../src/obsidian/reading-position";
 import { NeovimSession } from "../src/neovim/session";
+import { DEFAULT_SETTINGS } from "../src/settings";
 
 async function waitFor(check: () => boolean, label: string): Promise<void> {
   const deadline = Date.now() + 3000;
@@ -386,16 +387,23 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
   let hostHotkeys = 0;
   let readingToggles = 0;
   let sidebarFocuses = 0;
+  let ctrlTabSwitchesTabs = DEFAULT_SETTINGS.ctrlTabSwitchesTabs;
+  const tabSwitches: string[] = [];
   const errors: Error[] = [];
   const controller = new EditorController({
     status: (value) => { status = value; }, commandLine: () => {}, message: () => {}, error: (error) => errors.push(error),
   });
+  const inputKeys = t.mock.method(controller, "input");
   // Obsidian dispatches scopes and host hotkeys in the window's capture phase.
   window.addEventListener("keydown", (event) => {
     if (router.handle(event)) { event.stopPropagation(); return; }
     if (event.ctrlKey && event.key === "e") { readingToggles++; event.preventDefault(); event.stopPropagation(); }
     if (event.ctrlKey && event.key === "0") { sidebarFocuses++; event.preventDefault(); event.stopPropagation(); }
     if (event.ctrlKey && event.key === "r") { hostHotkeys++; event.preventDefault(); event.stopPropagation(); }
+    if (event.ctrlKey && event.key === "Tab") {
+      tabSwitches.push(event.shiftKey ? "previous" : "next");
+      event.preventDefault(); event.stopPropagation();
+    }
   }, true);
   const view = new EditorView({
     parent: window.document.body,
@@ -403,18 +411,35 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
       doc: "ab1\ncd2",
       extensions: [neovimExtension(controller, {
         name: () => "keys.md", save: async () => {}, registerKeys: (view, handler) => router.register(view.contentDOM, handler),
+        ctrlTabSwitchesTabs: () => ctrlTabSwitchesTabs,
       })],
     }),
   });
   t.after(() => { controller.stop(); view.destroy(); window.close(); });
-  const key = (value: string, ctrlKey = false) => {
-    const event = new window.KeyboardEvent("keydown", { key: value, ctrlKey, bubbles: true, cancelable: true });
+  const key = (value: string, ctrlKey = false, shiftKey = false) => {
+    const event = new window.KeyboardEvent("keydown", { key: value, ctrlKey, shiftKey, bubbles: true, cancelable: true });
     view.contentDOM.dispatchEvent(event);
     return event;
   };
   view.focus();
   await controller.start({ executable: process.env.NVIM_BIN ?? "nvim", useConfig: false, initPath: "" });
   await waitFor(() => status === "NORMAL", "normal mode");
+  const tabShortcuts = () => {
+    const calls = inputKeys.mock.callCount();
+    key("Tab", true);
+    key("Tab", true, true);
+    assert.equal(inputKeys.mock.callCount(), calls, "tab switching never sends input to Neovim");
+  };
+  tabShortcuts();
+  assert.deepEqual(tabSwitches, ["next", "previous"], "Normal mode leaves tab switching to Obsidian");
+  ctrlTabSwitchesTabs = false;
+  assert.equal(key("Tab", true).defaultPrevented, true);
+  assert.equal(inputKeys.mock.calls.at(-1)?.arguments[1], "<C-Tab>", "disabling takes effect in the existing editor");
+  assert.equal(tabSwitches.length, 2, "disabled Ctrl-Tab does not also trigger the host shortcut");
+  ctrlTabSwitchesTabs = true;
+  tabShortcuts();
+  assert.equal(tabSwitches.length, 4, "re-enabling needs no restart or editor rebuild");
+  assert.equal(view.state.doc.toString(), "ab1\ncd2");
   key("e", true);
   assert.equal(readingToggles, 1, "Normal Ctrl-E reaches Obsidian's reading toggle");
   key("0", true);
@@ -434,6 +459,8 @@ test("scope routing owns Vim Ctrl keys before host hotkeys and keeps native past
   assert.equal(hostHotkeys, 0);
   key("i");
   await waitFor(() => status === "INSERT", "insert mode");
+  tabShortcuts();
+  assert.deepEqual(tabSwitches, ["next", "previous", "next", "previous", "next", "previous"], "Insert mode also leaves tab switching to Obsidian");
   key("e", true);
   assert.equal(readingToggles, 2, "Insert Ctrl-E reaches Obsidian's reading toggle");
   key("0", true);

@@ -18,9 +18,10 @@ const SPECIAL_KEYS: Record<string, string> = {
 };
 
 /** null means Obsidian or the OS owns the shortcut. */
-export function toNeovimKey(event: KeyEvent, mode = "n"): string | null {
+export function toNeovimKey(event: KeyEvent, mode = "n", ctrlTabSwitchesTabs = true): string | null {
   if (event.isComposing || event.metaKey || event.altKey || (event.ctrlKey && event.shiftKey) || event.getModifierState?.("AltGraph")) return null;
   if (["Dead", "Process", "Unidentified", "Shift", "Control", "Alt", "Meta", "CapsLock"].includes(event.key)) return null;
+  if (ctrlTabSwitchesTabs && event.ctrlKey && event.key === "Tab") return null;
   // Save, copy, the quick switcher, editing/reading toggle, and sidebar focus stay with Obsidian.
   // Ctrl-V/Ctrl-X/Ctrl-A belong to Vim in Normal/Visual, and to the host when typing.
   if (event.ctrlKey && (["s", "c", "p", "e", "0"].includes(event.key.toLowerCase()) ||

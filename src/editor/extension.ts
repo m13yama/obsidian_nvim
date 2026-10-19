@@ -17,6 +17,7 @@ export interface EditorHost {
   isLoaded?: (view: EditorView) => boolean;
   save: (view: EditorView) => Promise<void>;
   registerKeys?: (view: EditorView, handler: (event: KeyboardEvent) => void) => () => void;
+  ctrlTabSwitchesTabs?: () => boolean;
 }
 
 export function neovimExtension(controller: EditorController, host: EditorHost): Extension {
@@ -218,7 +219,7 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
 
     private keydown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || !this.connected || this.composing || !this.currentFile() || event.keyCode === 229) return;
-      const key = toNeovimKey(event, this.mode);
+      const key = toNeovimKey(event, this.mode, host.ctrlTabSwitchesTabs?.());
       if (key === null) return;
       event.preventDefault();
       event.stopImmediatePropagation();
