@@ -1,4 +1,4 @@
-import { editorInfoField, FileSystemAdapter, MarkdownView, Notice, Plugin, PluginSettingTab, Scope, Setting, type App } from "obsidian";
+import { editorInfoField, FileSystemAdapter, MarkdownView, Notice, Platform, Plugin, PluginSettingTab, Scope, Setting, type App, type Hotkey } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import { EditorController } from "./editor/controller";
 import { neovimExtension } from "./editor/extension";
@@ -46,7 +46,17 @@ export default class NeovimPlugin extends Plugin {
       },
     });
     this.navigation = new WorkspaceNavigation(this.app, (parent) => new Scope(parent), this.keyRouter,
-      () => this.controller.ready, () => this.settings.navigation, (error) => this.navigationError(error));
+      () => this.controller.ready, () => this.settings.navigation, (error) => this.navigationError(error), (command) => {
+        // HotkeyManager is available at runtime but omitted from Obsidian's types.
+        const manager = (this.app as App & { hotkeyManager?: {
+          getHotkeys(id: string): Hotkey[] | undefined;
+          getDefaultHotkeys(id: string): Hotkey[] | undefined;
+        } }).hotkeyManager;
+        const id = `${this.manifest.id}:${command}`;
+        return (manager?.getHotkeys(id) ?? manager?.getDefaultHotkeys(id) ?? []).map((hotkey) => ({
+          ...hotkey, modifiers: hotkey.modifiers.map((modifier) => modifier === "Mod" ? (Platform.isMacOS ? "Meta" : "Ctrl") : modifier),
+        }));
+      });
     this.readingPosition = new ReadingPositionSync(this.app, () => this.controller.ready);
     this.register(() => this.navigation.destroy());
     this.register(() => this.readingPosition.destroy());

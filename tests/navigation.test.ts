@@ -612,3 +612,92 @@ test("numbered panes follow visible layout and exclude sidebars, background tabs
   await navigation.focusPane(1);
   assert.equal(workspace.activeLeaf, files, "unloaded navigation does nothing");
 });
+
+test("numbered focus shortcuts beat native sidebar tab shortcuts and follow hotkey changes", async (t) => {
+  const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
+  const { window } = dom;
+  const root = new TestScope();
+  const leftSplit = {};
+  const center = {};
+  let nativeTabs = 0;
+  root.register(null, "1", (event) => { if (event.ctrlKey) { nativeTabs++; return false; } });
+  const make = (type: string, split: object, x: number) => {
+    const containerEl = window.document.createElement("div");
+    containerEl.innerHTML = '<div tabindex="0" class="content"></div><input aria-label="Search">';
+    window.document.body.append(containerEl);
+    containerEl.getBoundingClientRect = () => new window.DOMRect(x, 0, 200, 200);
+    containerEl.getClientRects = () => [containerEl.getBoundingClientRect()] as unknown as DOMRectList;
+    const leaf = { getRoot: () => split, view: undefined as unknown as View } as WorkspaceLeaf;
+    leaf.view = { leaf, containerEl, scope: new TestScope(root), getViewType: () => type, getMode: () => "source",
+      editor: { focus: () => containerEl.querySelector<HTMLElement>(".content")!.focus() } } as unknown as View;
+    return leaf;
+  };
+  const files = make("file-explorer", leftSplit, 0);
+  const editor = make("markdown", center, 200);
+  const second = make("markdown", center, 400);
+  const workspace = {
+    activeLeaf: files, leftSplit, rightSplit: {},
+    iterateAllLeaves: (cb: (leaf: WorkspaceLeaf) => void) => [files, editor, second].forEach(cb),
+    getMostRecentLeaf: () => files,
+    revealLeaf: async () => {},
+    setActiveLeaf: (leaf: WorkspaceLeaf) => { workspace.activeLeaf = leaf; },
+  };
+  let hotkeys: Record<string, import("obsidian").Hotkey[]> = {
+    "focus-left-sidebar": [{ modifiers: ["Ctrl"], key: "0" }],
+    "focus-pane-1": [{ modifiers: ["Ctrl"], key: "1" }],
+    "focus-pane-2": [{ modifiers: ["Ctrl"], key: "2" }],
+  };
+  const errors: unknown[] = [];
+  const navigation = new WorkspaceNavigation({ workspace, scope: root } as unknown as App,
+    (parent) => new TestScope(parent as unknown as TestScope) as unknown as Scope,
+    new EditorKeyRouter(), () => false, () => false, (error) => errors.push(error), (command) => hotkeys[command] ?? []);
+  t.after(() => { navigation.destroy(); window.close(); });
+  let modal: TestScope | undefined;
+  window.addEventListener("keydown", (event) => {
+    const scope = modal ?? workspace.activeLeaf.view.scope as unknown as TestScope;
+    if (scope.handle(event) === false) { event.preventDefault(); event.stopPropagation(); }
+  }, true);
+  const key = (value: string, options: KeyboardEventInit = {}, target = window.document.body) => {
+    const event = new window.KeyboardEvent("keydown", { key: value, ctrlKey: true, bubbles: true, cancelable: true, ...options });
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  navigation.refresh();
+  assert.equal(key("1"), true);
+  await settle();
+  assert.equal(workspace.activeLeaf, editor, "Ctrl-1 leaves the sidebar even when Neovim/navigation is disabled");
+  assert.equal(window.document.activeElement, editor.view.containerEl.querySelector(".content"));
+  assert.equal(nativeTabs, 0, "the native numbered-tab command never steals the shortcut");
+  assert.equal(key("0", {}, window.document.activeElement as HTMLElement), true);
+  await settle();
+  assert.equal(workspace.activeLeaf, files);
+  assert.equal(key("2"), true);
+  await settle();
+  assert.equal(workspace.activeLeaf, second);
+  workspace.activeLeaf = files;
+  for (const options of [{ shiftKey: true }, { altKey: true }, { metaKey: true }, { isComposing: true }, { keyCode: 229 }]) {
+    key("2", options);
+    await settle();
+    assert.equal(workspace.activeLeaf, files, "extra modifiers and composition cannot focus a pane");
+  }
+  modal = new TestScope(root);
+  key("1");
+  await settle();
+  assert.equal(workspace.activeLeaf, files, "modal scopes retain priority");
+  modal = undefined;
+  hotkeys = { "focus-pane-1": [{ modifiers: ["Alt"], key: "e" }] };
+  key("1");
+  await settle();
+  assert.equal(workspace.activeLeaf, files, "removing the default restores the native tab shortcut");
+  assert.equal(nativeTabs, 2);
+  assert.equal(key("e", { ctrlKey: false, altKey: true }), true);
+  await settle();
+  assert.equal(workspace.activeLeaf, editor, "custom hotkeys apply without a restart");
+  hotkeys = { "focus-pane-1": [] };
+  workspace.activeLeaf = files;
+  assert.equal(key("e", { ctrlKey: false, altKey: true }), false);
+  await settle();
+  assert.equal(workspace.activeLeaf, files, "an explicitly unassigned shortcut stays disabled");
+  assert.deepEqual(errors, []);
+});

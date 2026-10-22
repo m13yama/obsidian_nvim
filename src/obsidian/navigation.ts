@@ -1,4 +1,4 @@
-import type { App, MarkdownView, Scope, TFile, View, WorkspaceLeaf } from "obsidian";
+import type { App, Hotkey, MarkdownView, Scope, TFile, View, WorkspaceLeaf } from "obsidian";
 import type { EditorKeyRouter } from "../editor/key-router";
 import type { NavigationDirection } from "../neovim/session";
 import { FileExplorerActions, focusedExplorerFile, type ExplorerMotion } from "./file-explorer";
@@ -31,6 +31,8 @@ export class WorkspaceNavigation {
     private ready: () => boolean,
     private navigationEnabled: () => boolean,
     private onError: (error: unknown) => void,
+    // Effective command hotkeys, with Mod resolved to Ctrl or Meta by the host.
+    private focusHotkeys?: (command: string) => readonly Hotkey[],
   ) { this.fileActions = new FileExplorerActions(app, onError); }
 
   refresh(): void {
@@ -153,9 +155,12 @@ export class WorkspaceNavigation {
   private handle(view: View, event: KeyboardEvent): false | undefined {
     const prefix = this.prefix?.view === view && Date.now() < this.prefix.until ? this.prefix : undefined;
     this.prefix = undefined;
-    if (!this.ready() || event.defaultPrevented) return;
+    if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+    // Run before parent scopes: Obsidian's numbered-tab commands share these
+    // defaults and otherwise select a tab inside the sidebar itself.
+    if (this.handleFocusHotkey(view, event)) return false;
+    if (!this.ready()) return;
     if (this.router.handle(event)) return false;
-    if (event.isComposing || event.keyCode === 229) return;
     if (view.getViewType() === "markdown" && (view as MarkdownView).getMode() === "preview") {
       return this.scrollReadingView(view as MarkdownView, event);
     }
@@ -212,6 +217,24 @@ export class WorkspaceNavigation {
       this.sendTreeKey(view, arrow);
       return false;
     }
+  }
+
+  private handleFocusHotkey(view: View, event: KeyboardEvent): boolean {
+    if (!this.focusHotkeys) return false;
+    const target = event.target as HTMLElement | null;
+    const bodyInActiveView = target === view.containerEl.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
+    if (!target || (!view.containerEl.contains(target) && !bodyInActiveView)) return false;
+    for (let number = 0; number <= 9; number++) {
+      const command = number === 0 ? "focus-left-sidebar" : `focus-pane-${number}`;
+      const matches = this.focusHotkeys(command).some(({ key, modifiers }) =>
+        key.toLowerCase() === event.key.toLowerCase() &&
+        event.ctrlKey === modifiers.includes("Ctrl") && event.metaKey === modifiers.includes("Meta") &&
+        event.altKey === modifiers.includes("Alt") && event.shiftKey === modifiers.includes("Shift"));
+      if (!matches) continue;
+      if (!event.repeat) void (number === 0 ? this.focusSidebar("left") : this.focusPane(number)).catch(this.onError);
+      return true;
+    }
+    return false;
   }
 
   private async openExplorerFile(explorer: View, file: TFile): Promise<void> {

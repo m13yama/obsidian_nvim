@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.15 — Beta — 2026-10-22
+
+- Fix Ctrl+1 through Ctrl+9 leaving focus in the sidebar because Obsidian's built-in numbered-tab commands handled the shortcuts first. Pane focus commands now take priority inside note and sidebar view scopes.
+- Apply current hotkey assignments immediately, including remapping or removing Ctrl+0 and numbered pane shortcuts. Keep modal scopes and IME composition protected.
+- Keep pane focus shortcuts available while Neovim or Vim pane navigation is disabled.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. Navigation regression coverage verifies sidebar-to-editor keyboard focus, native shortcut conflicts, live reassignment, removed bindings, modifiers, composition, and modal priority. The first full test run failed in the editor test file; all 13 editor tests passed in isolation, and all ten test files passed on the full rerun. Desktop Obsidian behavior has not yet been manually verified.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian. Alternatively, extract the ZIP into your vault's `.obsidian/plugins/` directory.
+
 ## 0.0.13 — Beta — 2026-10-19
 
 - Fix wrapped-line motions using the previous pane's width or the initial Neovim width after switching files or panes. Retain each editor's last visible size and apply it before the first key in the newly activated editor.
