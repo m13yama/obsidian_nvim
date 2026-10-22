@@ -77,6 +77,11 @@ export default class NeovimPlugin extends Plugin {
     this.addCommand({ id: "focus-editor", name: "Focus editor", callback: () => {
       void this.navigation.focusEditor().catch((error: unknown) => this.navigationError(error));
     } });
+    for (let number = 1; number <= 9; number++) {
+      this.addCommand({ id: `focus-pane-${number}`, name: `Focus pane ${number}`,
+        hotkeys: [{ modifiers: ["Ctrl"], key: String(number) }],
+        callback: () => { void this.navigation.focusPane(number).catch((error: unknown) => this.navigationError(error)); } });
+    }
     this.addCommand({
       id: "toggle", name: "Toggle Neovim",
       callback: () => {

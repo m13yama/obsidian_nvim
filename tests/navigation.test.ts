@@ -560,3 +560,55 @@ test("view scopes prioritize editor keys, navigate native sidebar trees, and res
     assert.deepEqual(errors, []);
   } finally { unregister(); navigation.destroy(); dom.window.close(); }
 });
+
+test("numbered panes follow visible layout and exclude sidebars, background tabs, and other windows", async (t) => {
+  const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
+  const popout = new JSDOM("<body></body>", { pretendToBeVisual: true });
+  const leftSplit = {};
+  const rightSplit = {};
+  const center = {};
+  const leaves: WorkspaceLeaf[] = [];
+  const make = (x: number, y: number, root = center, visible = true, document = dom.window.document) => {
+    const containerEl = document.createElement("div");
+    document.body.append(containerEl);
+    containerEl.getBoundingClientRect = () => new dom.window.DOMRect(x, y, 200, 200);
+    containerEl.getClientRects = () => (visible ? [containerEl.getBoundingClientRect()] : []) as unknown as DOMRectList;
+    const leaf = { getRoot: () => root, view: undefined as unknown as View } as WorkspaceLeaf;
+    leaf.view = { leaf, containerEl, scope: null, getViewType: () => "canvas" } as unknown as View;
+    leaves.push(leaf);
+    return leaf;
+  };
+  const right = make(400, 0);
+  const bottom = make(200, 200);
+  const top = make(200, 0);
+  const files = make(0, 0, leftSplit);
+  make(600, 0, rightSplit);
+  make(100, 0, center, false);
+  const otherWindow = make(0, 0, center, true, popout.window.document);
+  const workspace = {
+    activeLeaf: files, leftSplit, rightSplit,
+    iterateAllLeaves: (callback: (leaf: WorkspaceLeaf) => void) => leaves.forEach(callback),
+    revealLeaf: async () => {},
+    setActiveLeaf: (leaf: WorkspaceLeaf) => { workspace.activeLeaf = leaf; },
+  };
+  const navigation = new WorkspaceNavigation({ workspace } as unknown as App,
+    () => new TestScope() as unknown as Scope, new EditorKeyRouter(), () => false, () => false,
+    (error) => { throw error; });
+  t.after(() => { navigation.destroy(); dom.window.close(); popout.window.close(); });
+  for (const [number, expected] of [[1, top], [2, bottom], [3, right]] as const) {
+    await navigation.focusPane(number);
+    assert.equal(workspace.activeLeaf, expected);
+    assert.equal(dom.window.document.activeElement, expected.view.containerEl);
+  }
+  for (const number of [0, 4, 9, 10, 1.5]) {
+    await navigation.focusPane(number);
+    assert.equal(workspace.activeLeaf, right, "missing or invalid pane numbers do nothing");
+  }
+  workspace.activeLeaf = otherWindow;
+  await navigation.focusPane(1);
+  assert.equal(workspace.activeLeaf, otherWindow, "numbering stays in the focused window");
+  navigation.destroy();
+  workspace.activeLeaf = files;
+  await navigation.focusPane(1);
+  assert.equal(workspace.activeLeaf, files, "unloaded navigation does nothing");
+});

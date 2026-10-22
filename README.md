@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.13 — Beta**
+**0.0.14 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.13 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.13), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.13.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.14 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.14), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.14.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -74,6 +74,7 @@ Editor shortcuts are handled through Obsidian's view scopes, before application 
 | `Ctrl+S` / `Ctrl+C` / `Ctrl+P` | Obsidian save / copy / quick switcher | Same |
 | `Ctrl+E` | Obsidian editing / reading view toggle | Same |
 | `Ctrl+0` | Focus the left sidebar | Same |
+| `Ctrl+1` … `Ctrl+9` | Focus the numbered visible pane | Same |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Obsidian next / previous tab (setting below) | Same |
 | `Ctrl+Shift+…`, `Alt+…`, macOS `Cmd+…` | Obsidian / OS shortcuts | Same |
 
@@ -97,11 +98,14 @@ When switching a note from reading to editing, the cursor keeps its original lin
 
 ### Pane and sidebar navigation
 
-**Settings → Neovim → Vim pane and sidebar navigation** is enabled by default. Restart Neovim after changing it. Existing custom Neovim mappings for the `Ctrl+W` sequences take priority. `Ctrl+0` is an Obsidian command shortcut and works independently of this setting.
+**Settings → Neovim → Vim pane and sidebar navigation** is enabled by default. Restart Neovim after changing it. Existing custom Neovim mappings for the `Ctrl+W` sequences take priority. `Ctrl+0` and `Ctrl+1` … `Ctrl+9` are Obsidian command shortcuts and work independently of this setting.
+
+Numbered pane shortcuts target the displayed tab in each split of the focused window, including editing and reading views. Sidebars and hidden tabs do not count; a missing pane number does nothing. Change these bindings under **Settings → Hotkeys → Neovim: Focus pane 1** (through **Focus pane 9**). If a number is already assigned to another Obsidian command, clear that conflicting binding.
 
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+0` | Reveal and focus the left sidebar, including from editing and reading views |
+| `Ctrl+1` … `Ctrl+9` | Focus a visible pane, ordered left to right, then top to bottom within each column |
 | `Ctrl+W`, then `j` / `k` / `l` | Focus the adjacent Obsidian pane below / above / to the right; at the right edge, reveal the existing right sidebar |
 | `Ctrl+W`, then `p` | Return to the most recently focused Markdown editor |
 | File explorer: `j` / `k` | Move down / up |

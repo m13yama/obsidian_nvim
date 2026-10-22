@@ -22,9 +22,9 @@ export function toNeovimKey(event: KeyEvent, mode = "n", ctrlTabSwitchesTabs = t
   if (event.isComposing || event.metaKey || event.altKey || (event.ctrlKey && event.shiftKey) || event.getModifierState?.("AltGraph")) return null;
   if (["Dead", "Process", "Unidentified", "Shift", "Control", "Alt", "Meta", "CapsLock"].includes(event.key)) return null;
   if (ctrlTabSwitchesTabs && event.ctrlKey && event.key === "Tab") return null;
-  // Save, copy, the quick switcher, editing/reading toggle, and sidebar focus stay with Obsidian.
+  // Save, copy, the quick switcher, editing/reading toggle, and pane/sidebar focus stay with Obsidian.
   // Ctrl-V/Ctrl-X/Ctrl-A belong to Vim in Normal/Visual, and to the host when typing.
-  if (event.ctrlKey && (["s", "c", "p", "e", "0"].includes(event.key.toLowerCase()) ||
+  if (event.ctrlKey && (/^[0-9]$/.test(event.key) || ["s", "c", "p", "e"].includes(event.key.toLowerCase()) ||
     (!usesBlockCursor(mode) && ["v", "x", "a", "f"].includes(event.key.toLowerCase())))) return null;
   const special = SPECIAL_KEYS[event.key] ?? (/^F\d{1,2}$/.test(event.key) ? event.key : undefined);
   const modified = event.ctrlKey || event.altKey;

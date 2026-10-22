@@ -77,6 +77,24 @@ export class WorkspaceNavigation {
     if (leaf) await this.focusLeaf(leaf);
   }
 
+  async focusPane(number: number): Promise<void> {
+    if (this.disposed || !Number.isInteger(number) || number < 1 || number > 9) return;
+    const workspace = this.app.workspace;
+    const document = workspace.activeLeaf?.view.containerEl.ownerDocument;
+    const panes: { leaf: WorkspaceLeaf; rect: DOMRect }[] = [];
+    workspace.iterateAllLeaves((leaf) => {
+      const element = leaf.view.containerEl;
+      if (this.isSidebar(leaf) || (document && element.ownerDocument !== document) || !element.getClientRects().length) return;
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) panes.push({ leaf, rect });
+    });
+    // Only the displayed tab in each split counts. Columns run left to right,
+    // and vertically stacked panes within a column run top to bottom.
+    panes.sort((a, b) => a.rect.left - b.rect.left || a.rect.top - b.rect.top);
+    const pane = panes[number - 1];
+    if (pane) await this.focusLeaf(pane.leaf);
+  }
+
   async navigate(direction: NavigationDirection): Promise<void> {
     if (this.disposed) return;
     if (direction === "editor") return this.focusEditor();
