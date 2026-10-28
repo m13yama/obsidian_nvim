@@ -73,6 +73,18 @@ export class WorkspaceNavigation {
     if (leaf) await this.focusLeaf(leaf);
   }
 
+  async focusFileExplorer(): Promise<void> {
+    if (this.disposed) return;
+    const workspace = this.app.workspace;
+    const document = workspace.activeLeaf?.view.containerEl.ownerDocument;
+    const leaves = workspace.getLeavesOfType("file-explorer");
+    const leaf = leaves.find((candidate) => candidate.getRoot() === workspace.leftSplit &&
+      (!document || candidate.view.containerEl.ownerDocument === document)) ??
+      leaves.find((candidate) => !document || candidate.view.containerEl.ownerDocument === document) ?? leaves[0];
+    if (!leaf) throw new Error("File explorer is unavailable. Enable Obsidian's Files core plugin.");
+    await this.focusLeaf(leaf);
+  }
+
   async focusEditor(): Promise<void> {
     const leaves = this.app.workspace.getLeavesOfType("markdown");
     const leaf = this.lastEditor && leaves.includes(this.lastEditor) ? this.lastEditor : leaves[0];
@@ -224,14 +236,19 @@ export class WorkspaceNavigation {
     const target = event.target as HTMLElement | null;
     const bodyInActiveView = target === view.containerEl.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
     if (!target || (!view.containerEl.contains(target) && !bodyInActiveView)) return false;
-    for (let number = 0; number <= 9; number++) {
-      const command = number === 0 ? "focus-left-sidebar" : `focus-pane-${number}`;
+    const commands: [string, () => Promise<void>][] = [
+      ["focus-file-explorer", () => this.focusFileExplorer()],
+      ["focus-left-sidebar", () => this.focusSidebar("left")],
+      ...Array.from({ length: 9 }, (_, index): [string, () => Promise<void>] =>
+        [`focus-pane-${index + 1}`, () => this.focusPane(index + 1)]),
+    ];
+    for (const [command, focus] of commands) {
       const matches = this.focusHotkeys(command).some(({ key, modifiers }) =>
         key.toLowerCase() === event.key.toLowerCase() &&
         event.ctrlKey === modifiers.includes("Ctrl") && event.metaKey === modifiers.includes("Meta") &&
         event.altKey === modifiers.includes("Alt") && event.shiftKey === modifiers.includes("Shift"));
       if (!matches) continue;
-      if (!event.repeat) void (number === 0 ? this.focusSidebar("left") : this.focusPane(number)).catch(this.onError);
+      if (!event.repeat) void focus().catch(this.onError);
       return true;
     }
     return false;

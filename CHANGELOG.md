@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.16 — Beta — 2026-10-28
+
+- Make `Ctrl+Z` behave as ordinary Undo while editing with Neovim, instead of sending `Ctrl+Z` as text input. Keep Insert and Replace mode active after undo; add `Ctrl+Shift+Z` for redo.
+- Add **Neovim: Focus file explorer**, assigned to `Ctrl+Shift+E` by default. Reveal and focus Files directly when the left sidebar is collapsed or another sidebar tab is active.
+- Give the Files focus shortcut priority inside note and sidebar scopes, follow live hotkey changes, and keep it available when Neovim or Vim pane navigation is disabled.
+
+Validated with TypeScript syntax checks for all source and test files and direct Neovim 0.12.5 input checks covering Normal, Insert, and Replace undo/redo behavior. Regression tests cover shortcut translation, connected-editor undo/redo without leaving Insert mode, file-explorer focus, and conflicting parent shortcuts. The production build, TypeScript typecheck, full automated suite, and desktop Obsidian behavior have not been verified because the dependency registry and GitHub API were unavailable in the release environment.
+
+To upgrade after a production bundle is available, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian.
+
 ## 0.0.15 — Beta — 2026-10-22
 
 - Fix Ctrl+1 through Ctrl+9 leaving focus in the sidebar because Obsidian's built-in numbered-tab commands handled the shortcuts first. Pane focus commands now take priority inside note and sidebar view scopes.

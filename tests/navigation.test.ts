@@ -613,14 +613,16 @@ test("numbered panes follow visible layout and exclude sidebars, background tabs
   assert.equal(workspace.activeLeaf, files, "unloaded navigation does nothing");
 });
 
-test("numbered focus shortcuts beat native sidebar tab shortcuts and follow hotkey changes", async (t) => {
+test("file explorer and numbered focus shortcuts beat conflicts and follow hotkey changes", async (t) => {
   const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
   const { window } = dom;
   const root = new TestScope();
   const leftSplit = {};
   const center = {};
   let nativeTabs = 0;
+  let nativeExplorer = 0;
   root.register(null, "1", (event) => { if (event.ctrlKey) { nativeTabs++; return false; } });
+  root.register(null, "E", (event) => { if (event.ctrlKey && event.shiftKey) { nativeExplorer++; return false; } });
   const make = (type: string, split: object, x: number) => {
     const containerEl = window.document.createElement("div");
     containerEl.innerHTML = '<div tabindex="0" class="content"></div><input aria-label="Search">';
@@ -638,11 +640,13 @@ test("numbered focus shortcuts beat native sidebar tab shortcuts and follow hotk
   const workspace = {
     activeLeaf: files, leftSplit, rightSplit: {},
     iterateAllLeaves: (cb: (leaf: WorkspaceLeaf) => void) => [files, editor, second].forEach(cb),
+    getLeavesOfType: (type: string) => [files, editor, second].filter((leaf) => leaf.view.getViewType() === type),
     getMostRecentLeaf: () => files,
     revealLeaf: async () => {},
     setActiveLeaf: (leaf: WorkspaceLeaf) => { workspace.activeLeaf = leaf; },
   };
   let hotkeys: Record<string, import("obsidian").Hotkey[]> = {
+    "focus-file-explorer": [{ modifiers: ["Ctrl", "Shift"], key: "e" }],
     "focus-left-sidebar": [{ modifiers: ["Ctrl"], key: "0" }],
     "focus-pane-1": [{ modifiers: ["Ctrl"], key: "1" }],
     "focus-pane-2": [{ modifiers: ["Ctrl"], key: "2" }],
@@ -664,6 +668,12 @@ test("numbered focus shortcuts beat native sidebar tab shortcuts and follow hotk
   };
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   navigation.refresh();
+  workspace.activeLeaf = editor;
+  editor.view.containerEl.querySelector<HTMLElement>(".content")!.focus();
+  assert.equal(key("E", { shiftKey: true }, window.document.activeElement as HTMLElement), true);
+  await settle();
+  assert.equal(workspace.activeLeaf, files, "Ctrl-Shift-E reveals and focuses the file explorer");
+  assert.equal(nativeExplorer, 0, "a conflicting parent shortcut does not steal Ctrl-Shift-E");
   assert.equal(key("1"), true);
   await settle();
   assert.equal(workspace.activeLeaf, editor, "Ctrl-1 leaves the sidebar even when Neovim/navigation is disabled");

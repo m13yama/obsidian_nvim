@@ -3,7 +3,7 @@ import { Decoration, EditorView, ViewPlugin, layer, type DecorationSet, type Vie
 import type { BlockSelectionRow, EditorDocument, NeovimState } from "../neovim/session";
 import { EditorController, type EditorPort, type FileKey } from "./controller";
 import { documentDiff } from "./document";
-import { toNeovimKey } from "./keys";
+import { toNeovimKey, toNeovimUndoKey } from "./keys";
 import { byteToUtf16, nextChar, utf16ToByte } from "./text";
 import { cursorDecorations, usesBlockCursor } from "./cursor";
 import { blockSelectionMarkers } from "./block-selection";
@@ -239,7 +239,7 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
         controller.input(this, event.data.replace(/</g, "<lt>"));
       } else if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
         event.preventDefault();
-        controller.input(this, event.inputType === "historyUndo" ? "<Esc>u" : "<Esc><C-r>");
+        controller.input(this, toNeovimUndoKey(this.mode, event.inputType === "historyRedo"));
       }
     };
 
