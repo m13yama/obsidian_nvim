@@ -87,6 +87,9 @@ export default class NeovimPlugin extends Plugin {
     this.addCommand({ id: "focus-file-explorer", name: "Focus file explorer",
       hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "e" }],
       callback: () => { void this.navigation.focusFileExplorer().catch((error: unknown) => this.navigationError(error)); } });
+    this.addCommand({ id: "focus-bookmarks", name: "Focus bookmarks",
+      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "b" }],
+      callback: () => { void this.navigation.focusBookmarks().catch((error: unknown) => this.navigationError(error)); } });
     this.addCommand({ id: "focus-editor", name: "Focus editor", callback: () => {
       void this.navigation.focusEditor().catch((error: unknown) => this.navigationError(error));
     } });
@@ -192,7 +195,7 @@ class NeovimSettingTab extends PluginSettingTab {
       }));
     new Setting(this.containerEl)
       .setName("Vim pane and sidebar navigation")
-      .setDesc("Ctrl+0 focuses the left sidebar; Ctrl+Shift+E reveals Files. Ctrl+W then j/k/l moves down/up/right between panes and the right sidebar; p returns to the editor. Files uses vscode-neovim keys: a/A create a note/folder, r renames, d deletes, y/x/p copy/cut/paste, v opens to the right, R refreshes. Esc returns to the note. Existing Neovim mappings take priority. Restart Neovim to apply.")
+      .setDesc("Ctrl+0 focuses the left sidebar; Ctrl+Shift+E reveals Files; Ctrl+Shift+B reveals Bookmarks. Ctrl+W then j/k/l moves down/up/right between panes and the right sidebar; p returns to the editor. Files uses vscode-neovim keys: a/A create a note/folder, r renames, d deletes, y/x/p copy/cut/paste, v opens to the right, R refreshes. Esc returns to the note. Existing Neovim mappings take priority. Restart Neovim to apply.")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.navigation).onChange(async (value) => {
         this.plugin.settings.navigation = value;
         await this.plugin.saveData(this.plugin.settings);

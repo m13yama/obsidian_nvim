@@ -85,6 +85,16 @@ export class WorkspaceNavigation {
     await this.focusLeaf(leaf);
   }
 
+  async focusBookmarks(): Promise<void> {
+    if (this.disposed) return;
+    const workspace = this.app.workspace;
+    const document = workspace.activeLeaf?.view.containerEl.ownerDocument;
+    const leaves = workspace.getLeavesOfType("bookmarks");
+    const leaf = leaves.find((candidate) => !document || candidate.view.containerEl.ownerDocument === document) ?? leaves[0];
+    if (!leaf) throw new Error("Bookmarks is unavailable. Enable Obsidian's Bookmarks core plugin.");
+    await this.focusLeaf(leaf);
+  }
+
   async focusEditor(): Promise<void> {
     const leaves = this.app.workspace.getLeavesOfType("markdown");
     const leaf = this.lastEditor && leaves.includes(this.lastEditor) ? this.lastEditor : leaves[0];
@@ -238,6 +248,7 @@ export class WorkspaceNavigation {
     if (!target || (!view.containerEl.contains(target) && !bodyInActiveView)) return false;
     const commands: [string, () => Promise<void>][] = [
       ["focus-file-explorer", () => this.focusFileExplorer()],
+      ["focus-bookmarks", () => this.focusBookmarks()],
       ["focus-left-sidebar", () => this.focusSidebar("left")],
       ...Array.from({ length: 9 }, (_, index): [string, () => Promise<void>] =>
         [`focus-pane-${index + 1}`, () => this.focusPane(index + 1)]),

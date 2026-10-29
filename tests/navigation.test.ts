@@ -613,7 +613,7 @@ test("numbered panes follow visible layout and exclude sidebars, background tabs
   assert.equal(workspace.activeLeaf, files, "unloaded navigation does nothing");
 });
 
-test("file explorer and numbered focus shortcuts beat conflicts and follow hotkey changes", async (t) => {
+test("sidebar views and numbered focus shortcuts beat conflicts and follow hotkey changes", async (t) => {
   const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
   const { window } = dom;
   const root = new TestScope();
@@ -621,8 +621,10 @@ test("file explorer and numbered focus shortcuts beat conflicts and follow hotke
   const center = {};
   let nativeTabs = 0;
   let nativeExplorer = 0;
+  let nativeBookmarks = 0;
   root.register(null, "1", (event) => { if (event.ctrlKey) { nativeTabs++; return false; } });
   root.register(null, "E", (event) => { if (event.ctrlKey && event.shiftKey) { nativeExplorer++; return false; } });
+  root.register(null, "B", (event) => { if (event.ctrlKey && event.shiftKey) { nativeBookmarks++; return false; } });
   const make = (type: string, split: object, x: number) => {
     const containerEl = window.document.createElement("div");
     containerEl.innerHTML = '<div tabindex="0" class="content"></div><input aria-label="Search">';
@@ -635,18 +637,20 @@ test("file explorer and numbered focus shortcuts beat conflicts and follow hotke
     return leaf;
   };
   const files = make("file-explorer", leftSplit, 0);
+  const bookmarks = make("bookmarks", leftSplit, 0);
   const editor = make("markdown", center, 200);
   const second = make("markdown", center, 400);
   const workspace = {
     activeLeaf: files, leftSplit, rightSplit: {},
-    iterateAllLeaves: (cb: (leaf: WorkspaceLeaf) => void) => [files, editor, second].forEach(cb),
-    getLeavesOfType: (type: string) => [files, editor, second].filter((leaf) => leaf.view.getViewType() === type),
+    iterateAllLeaves: (cb: (leaf: WorkspaceLeaf) => void) => [files, bookmarks, editor, second].forEach(cb),
+    getLeavesOfType: (type: string) => [files, bookmarks, editor, second].filter((leaf) => leaf.view.getViewType() === type),
     getMostRecentLeaf: () => files,
     revealLeaf: async () => {},
     setActiveLeaf: (leaf: WorkspaceLeaf) => { workspace.activeLeaf = leaf; },
   };
   let hotkeys: Record<string, import("obsidian").Hotkey[]> = {
     "focus-file-explorer": [{ modifiers: ["Ctrl", "Shift"], key: "e" }],
+    "focus-bookmarks": [{ modifiers: ["Ctrl", "Shift"], key: "b" }],
     "focus-left-sidebar": [{ modifiers: ["Ctrl"], key: "0" }],
     "focus-pane-1": [{ modifiers: ["Ctrl"], key: "1" }],
     "focus-pane-2": [{ modifiers: ["Ctrl"], key: "2" }],
@@ -674,6 +678,10 @@ test("file explorer and numbered focus shortcuts beat conflicts and follow hotke
   await settle();
   assert.equal(workspace.activeLeaf, files, "Ctrl-Shift-E reveals and focuses the file explorer");
   assert.equal(nativeExplorer, 0, "a conflicting parent shortcut does not steal Ctrl-Shift-E");
+  assert.equal(key("B", { shiftKey: true }), true);
+  await settle();
+  assert.equal(workspace.activeLeaf, bookmarks, "Ctrl-Shift-B reveals and focuses Bookmarks");
+  assert.equal(nativeBookmarks, 0, "a conflicting parent shortcut does not steal Ctrl-Shift-B");
   assert.equal(key("1"), true);
   await settle();
   assert.equal(workspace.activeLeaf, editor, "Ctrl-1 leaves the sidebar even when Neovim/navigation is disabled");

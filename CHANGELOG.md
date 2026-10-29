@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.17 — Beta — 2026-10-29
+
+- Add **Neovim: Focus bookmarks**, assigned to `Ctrl+Shift+B` by default. Reveal and focus Bookmarks when its sidebar is collapsed or another sidebar tab is active.
+- Give the Bookmarks focus shortcut priority inside note and sidebar scopes, follow live hotkey changes, and keep it available when Neovim or Vim pane navigation is disabled.
+- Report a clear error when Obsidian's Bookmarks core plugin is unavailable, and document the new shortcut alongside the existing Files and pane navigation shortcuts.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. Navigation regression coverage verifies Bookmarks focus and priority over a conflicting parent shortcut. The new shortcut has not yet been manually verified in desktop Obsidian.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian. Alternatively, extract the ZIP into your vault's `.obsidian/plugins/` directory.
+
 ## 0.0.16 — Beta — 2026-10-28
 
 - Make `Ctrl+Z` behave as ordinary Undo while editing with Neovim, instead of sending `Ctrl+Z` as text input. Keep Insert and Replace mode active after undo; add `Ctrl+Shift+Z` for redo.
