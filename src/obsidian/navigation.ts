@@ -32,7 +32,7 @@ export class WorkspaceNavigation {
     private navigationEnabled: () => boolean,
     private onError: (error: unknown) => void,
     // Effective command hotkeys, with Mod resolved to Ctrl or Meta by the host.
-    private focusHotkeys?: (command: string) => readonly Hotkey[],
+    private commandHotkeys?: (command: string) => readonly Hotkey[],
   ) { this.fileActions = new FileExplorerActions(app, onError); }
 
   refresh(): void {
@@ -63,6 +63,15 @@ export class WorkspaceNavigation {
     });
     for (const [view, override] of this.overrides) {
       if (!views.has(view)) this.restore(view, override);
+    }
+  }
+
+  async openCommandPalette(): Promise<void> {
+    if (this.disposed) return;
+    // The command registry is available at runtime but omitted from Obsidian's types.
+    const commands = (this.app as App & { commands?: { executeCommandById(id: string): boolean } }).commands;
+    if (!commands?.executeCommandById("command-palette:open")) {
+      throw new Error("Command palette is unavailable. Enable Obsidian's Command palette core plugin.");
     }
   }
 
@@ -180,7 +189,7 @@ export class WorkspaceNavigation {
     if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     // Run before parent scopes: Obsidian's numbered-tab commands share these
     // defaults and otherwise select a tab inside the sidebar itself.
-    if (this.handleFocusHotkey(view, event)) return false;
+    if (this.handleCommandHotkey(view, event)) return false;
     if (!this.ready()) return;
     if (this.router.handle(event)) return false;
     if (view.getViewType() === "markdown" && (view as MarkdownView).getMode() === "preview") {
@@ -241,25 +250,26 @@ export class WorkspaceNavigation {
     }
   }
 
-  private handleFocusHotkey(view: View, event: KeyboardEvent): boolean {
-    if (!this.focusHotkeys) return false;
+  private handleCommandHotkey(view: View, event: KeyboardEvent): boolean {
+    if (!this.commandHotkeys) return false;
     const target = event.target as HTMLElement | null;
     const bodyInActiveView = target === view.containerEl.ownerDocument.body && this.app.workspace.activeLeaf?.view === view;
     if (!target || (!view.containerEl.contains(target) && !bodyInActiveView)) return false;
     const commands: [string, () => Promise<void>][] = [
+      ["open-command-palette", () => this.openCommandPalette()],
       ["focus-file-explorer", () => this.focusFileExplorer()],
       ["focus-bookmarks", () => this.focusBookmarks()],
       ["focus-left-sidebar", () => this.focusSidebar("left")],
       ...Array.from({ length: 9 }, (_, index): [string, () => Promise<void>] =>
         [`focus-pane-${index + 1}`, () => this.focusPane(index + 1)]),
     ];
-    for (const [command, focus] of commands) {
-      const matches = this.focusHotkeys(command).some(({ key, modifiers }) =>
+    for (const [command, run] of commands) {
+      const matches = this.commandHotkeys(command).some(({ key, modifiers }) =>
         key.toLowerCase() === event.key.toLowerCase() &&
         event.ctrlKey === modifiers.includes("Ctrl") && event.metaKey === modifiers.includes("Meta") &&
         event.altKey === modifiers.includes("Alt") && event.shiftKey === modifiers.includes("Shift"));
       if (!matches) continue;
-      if (!event.repeat) void focus().catch(this.onError);
+      if (!event.repeat) void run().catch(this.onError);
       return true;
     }
     return false;

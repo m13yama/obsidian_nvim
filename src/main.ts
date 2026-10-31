@@ -79,6 +79,9 @@ export default class NeovimPlugin extends Plugin {
     }));
     this.addSettingTab(new NeovimSettingTab(this.app, this));
     this.addCommand({ id: "restart", name: "Restart Neovim", callback: () => { void this.restart(); } });
+    this.addCommand({ id: "open-command-palette", name: "Open command palette",
+      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "p" }],
+      callback: () => { void this.navigation.openCommandPalette().catch((error: unknown) => this.navigationError(error)); } });
     for (const side of ["left", "right"] as const) {
       this.addCommand({ id: `focus-${side}-sidebar`, name: `Focus ${side} sidebar`,
         hotkeys: side === "left" ? [{ modifiers: ["Ctrl"], key: "0" }] : [],

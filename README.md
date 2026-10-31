@@ -1,6 +1,6 @@
 # Neovim for Obsidian
 
-**0.0.17 — Beta**
+**0.0.18 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
@@ -8,7 +8,7 @@ An early desktop plugin that uses a **real local Neovim process** to edit notes 
 
 Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.17 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.17), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.17.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.18 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.18), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.18.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -73,6 +73,7 @@ Editor shortcuts are handled through Obsidian's view scopes, before application 
 | `Ctrl+R` | Vim redo | Vim insert-register command |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo | Same, without leaving Insert / Replace mode |
 | `Ctrl+S` / `Ctrl+C` / `Ctrl+P` | Obsidian save / copy / quick switcher | Same |
+| `Ctrl+Shift+P` | Open the Obsidian command palette | Same |
 | `Ctrl+E` | Obsidian editing / reading view toggle | Same |
 | `Ctrl+Shift+E` | Reveal and focus the file explorer | Same |
 | `Ctrl+Shift+B` | Reveal and focus Bookmarks | Same |
@@ -80,6 +81,8 @@ Editor shortcuts are handled through Obsidian's view scopes, before application 
 | `Ctrl+1` … `Ctrl+9` | Focus the numbered visible pane | Same |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Obsidian next / previous tab (setting below) | Same |
 | Other `Ctrl+Shift+…`, `Alt+…`, macOS `Cmd+…` | Obsidian / OS shortcuts | Same |
+
+`Ctrl+Shift+P` runs **Neovim: Open command palette** in editing and reading views and sidebars, even when Neovim or Vim pane navigation is disabled. Obsidian's **Command palette** core plugin must be enabled. Change the binding under **Settings → Hotkeys → Neovim: Open command palette**.
 
 **Settings → Neovim → Ctrl+Tab switches editor tabs** is enabled by default, including when upgrading. It lets Obsidian handle `Ctrl+Tab` while editing in Source mode or Live Preview, so you can switch to the next tab without leaving the editor. `Ctrl+Shift+Tab` switches back. Changes apply immediately, without restarting Neovim. Turn the setting off to send `Ctrl+Tab` to your Neovim mappings again; `Ctrl+Shift+Tab` remains an Obsidian shortcut. These shortcuts follow your Obsidian hotkey assignments.
 

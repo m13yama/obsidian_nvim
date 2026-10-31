@@ -613,7 +613,7 @@ test("numbered panes follow visible layout and exclude sidebars, background tabs
   assert.equal(workspace.activeLeaf, files, "unloaded navigation does nothing");
 });
 
-test("sidebar views and numbered focus shortcuts beat conflicts and follow hotkey changes", async (t) => {
+test("workspace shortcuts beat conflicts and follow hotkey changes", async (t) => {
   const dom = new JSDOM("<body></body>", { pretendToBeVisual: true });
   const { window } = dom;
   const root = new TestScope();
@@ -622,9 +622,13 @@ test("sidebar views and numbered focus shortcuts beat conflicts and follow hotke
   let nativeTabs = 0;
   let nativeExplorer = 0;
   let nativeBookmarks = 0;
+  let nativePalette = 0;
+  const executedCommands: string[] = [];
+  const commands = { executeCommandById: (id: string) => { executedCommands.push(id); return true; } };
   root.register(null, "1", (event) => { if (event.ctrlKey) { nativeTabs++; return false; } });
   root.register(null, "E", (event) => { if (event.ctrlKey && event.shiftKey) { nativeExplorer++; return false; } });
   root.register(null, "B", (event) => { if (event.ctrlKey && event.shiftKey) { nativeBookmarks++; return false; } });
+  root.register(null, "P", (event) => { if (event.ctrlKey && event.shiftKey) { nativePalette++; return false; } });
   const make = (type: string, split: object, x: number) => {
     const containerEl = window.document.createElement("div");
     containerEl.innerHTML = '<div tabindex="0" class="content"></div><input aria-label="Search">';
@@ -649,6 +653,7 @@ test("sidebar views and numbered focus shortcuts beat conflicts and follow hotke
     setActiveLeaf: (leaf: WorkspaceLeaf) => { workspace.activeLeaf = leaf; },
   };
   let hotkeys: Record<string, import("obsidian").Hotkey[]> = {
+    "open-command-palette": [{ modifiers: ["Ctrl", "Shift"], key: "p" }],
     "focus-file-explorer": [{ modifiers: ["Ctrl", "Shift"], key: "e" }],
     "focus-bookmarks": [{ modifiers: ["Ctrl", "Shift"], key: "b" }],
     "focus-left-sidebar": [{ modifiers: ["Ctrl"], key: "0" }],
@@ -656,7 +661,7 @@ test("sidebar views and numbered focus shortcuts beat conflicts and follow hotke
     "focus-pane-2": [{ modifiers: ["Ctrl"], key: "2" }],
   };
   const errors: unknown[] = [];
-  const navigation = new WorkspaceNavigation({ workspace, scope: root } as unknown as App,
+  const navigation = new WorkspaceNavigation({ workspace, scope: root, commands } as unknown as App,
     (parent) => new TestScope(parent as unknown as TestScope) as unknown as Scope,
     new EditorKeyRouter(), () => false, () => false, (error) => errors.push(error), (command) => hotkeys[command] ?? []);
   t.after(() => { navigation.destroy(); window.close(); });
@@ -674,10 +679,21 @@ test("sidebar views and numbered focus shortcuts beat conflicts and follow hotke
   navigation.refresh();
   workspace.activeLeaf = editor;
   editor.view.containerEl.querySelector<HTMLElement>(".content")!.focus();
+  assert.equal(key("P", { shiftKey: true }, window.document.activeElement as HTMLElement), true);
+  await settle();
+  assert.deepEqual(executedCommands, ["command-palette:open"], "Ctrl-Shift-P opens the palette even with Neovim disabled");
+  assert.equal(nativePalette, 0, "a conflicting parent shortcut does not steal Ctrl-Shift-P");
+  key("P", { shiftKey: true, repeat: true }, window.document.activeElement as HTMLElement);
+  key("P", { shiftKey: true, isComposing: true }, window.document.activeElement as HTMLElement);
+  await settle();
+  assert.equal(executedCommands.length, 1, "key repeat and IME composition do not reopen the palette");
   assert.equal(key("E", { shiftKey: true }, window.document.activeElement as HTMLElement), true);
   await settle();
   assert.equal(workspace.activeLeaf, files, "Ctrl-Shift-E reveals and focuses the file explorer");
   assert.equal(nativeExplorer, 0, "a conflicting parent shortcut does not steal Ctrl-Shift-E");
+  assert.equal(key("P", { shiftKey: true }), true);
+  await settle();
+  assert.equal(executedCommands.length, 2, "the palette also opens from the file explorer");
   assert.equal(key("B", { shiftKey: true }), true);
   await settle();
   assert.equal(workspace.activeLeaf, bookmarks, "Ctrl-Shift-B reveals and focuses Bookmarks");
@@ -700,8 +716,10 @@ test("sidebar views and numbered focus shortcuts beat conflicts and follow hotke
     assert.equal(workspace.activeLeaf, files, "extra modifiers and composition cannot focus a pane");
   }
   modal = new TestScope(root);
+  key("P", { shiftKey: true });
   key("1");
   await settle();
+  assert.equal(executedCommands.length, 2, "modal scopes retain priority over the palette shortcut");
   assert.equal(workspace.activeLeaf, files, "modal scopes retain priority");
   modal = undefined;
   hotkeys = { "focus-pane-1": [{ modifiers: ["Alt"], key: "e" }] };
@@ -717,5 +735,15 @@ test("sidebar views and numbered focus shortcuts beat conflicts and follow hotke
   assert.equal(key("e", { ctrlKey: false, altKey: true }), false);
   await settle();
   assert.equal(workspace.activeLeaf, files, "an explicitly unassigned shortcut stays disabled");
+  hotkeys = { "open-command-palette": [{ modifiers: ["Alt"], key: "p" }] };
+  key("P", { shiftKey: true });
+  await settle();
+  assert.equal(executedCommands.length, 2, "remapping releases the default palette shortcut");
+  assert.equal(key("p", { ctrlKey: false, altKey: true }), true);
+  await settle();
+  assert.equal(executedCommands.length, 3, "the new palette shortcut takes effect immediately");
+  hotkeys = { "open-command-palette": [] };
+  assert.equal(key("p", { ctrlKey: false, altKey: true }), false);
+  assert.equal(executedCommands.length, 3, "removing the palette shortcut disables it");
   assert.deepEqual(errors, []);
 });

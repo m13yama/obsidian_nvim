@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.18 — Beta — 2026-10-31
+
+- Add **Neovim: Open command palette**, assigned to `Ctrl+Shift+P` by default. Give it priority in note and sidebar scopes and follow hotkey changes, including while Neovim or Vim pane navigation is disabled.
+- Preserve modal shortcut priority, ignore repeated key presses, and report when Obsidian's Command palette core plugin is unavailable.
+
+Validated with the production build, TypeScript checks, and all ten automated test files. Navigation regression coverage verifies command-palette dispatch, conflicting parent shortcuts, key repeat, IME composition, modal priority, and live reassignment/removal. The new shortcut has not yet been manually verified in desktop Obsidian.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian. Alternatively, extract the ZIP into your vault's `.obsidian/plugins/` directory.
+
 ## 0.0.17 — Beta — 2026-10-29
 
 - Add **Neovim: Focus bookmarks**, assigned to `Ctrl+Shift+B` by default. Reveal and focus Bookmarks when its sidebar is collapsed or another sidebar tab is active.
