@@ -1,14 +1,14 @@
 # Neovim for Obsidian
 
-**0.0.18 — Beta**
+**0.0.19 — Beta**
 
 An early desktop plugin that uses a **real local Neovim process** to edit notes in Obsidian, inspired by vscode-neovim. Obsidian keeps its Markdown editor and saves the notes. Neovim runs in the background and handles editing commands over MessagePack-RPC.
 
 ## Install
 
-Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 and Neovim 0.12.5 are tested locally. Mobile is not supported.
+Requirements: desktop Obsidian **1.8.7+**, Neovim **0.9+**, and Node.js **22+** for development. Obsidian 1.13.7 / 1.15.0 and Neovim 0.12.5 are tested locally. Mobile is not supported.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.18 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.18), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.18.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
+Download `main.js`, `manifest.json`, and `styles.css` from the [0.0.19 release](https://github.com/m13yama/obsidian_nvim/releases/tag/0.0.19), then follow steps 2–5 below. Alternatively, extract `obsidian-neovim-0.0.19.zip` into `<your-vault>/.obsidian/plugins/`. Node.js is only needed when building from source.
 
 1. Build the plugin in this folder:
 
@@ -89,6 +89,16 @@ Editor shortcuts are handled through Obsidian's view scopes, before application 
 `Ctrl+Z` behaves like Undo in an ordinary text editor, including while typing in Insert or Replace mode. `Ctrl+Shift+Z` redoes the edit. Both shortcuts keep the current typing mode. Other Ctrl keys go to Neovim unless listed above. To avoid a collision with a Vim Ctrl command, assign your Obsidian command a Ctrl+Shift shortcut. In Normal mode, paste from a Vim register with `p`/`P`, use the context-menu Paste action, or enter Insert mode for native `Ctrl+V`. `Ctrl+C` remains copy; use `Esc` or `Ctrl+[` to leave Insert mode.
 
 In editing view, `zz` centers the cursor line in Obsidian's editor in Normal and Visual modes. A count such as `50zz` moves to that line and centers it. Existing custom `zz` mappings take priority.
+
+### Folding in Source mode and Live Preview
+
+In Normal mode, **Enter toggles the fold containing the cursor**. On a line outside any fold it keeps Neovim's normal next-line behavior. Insert/Replace Enter remains a newline, Visual mode and command-line Enter keep their existing meanings, and user-defined Normal-mode Enter mappings take priority.
+
+Obsidian supplies the fold boundaries for headings, lists, and other supported source blocks. Closed blocks count as one line for `j`/`k`, arrows, and counted motions such as `5j`; scrolling keeps them closed. Mouse folding and `zo`/`zc`/`za`/`zR`/`zM` use the same state. Opening a parent preserves the open/closed state of its children. Each editor pane retains its own folds, including when two panes show the same note.
+
+Searches and explicit jumps to hidden source lines reveal the destination's enclosing folds. Linewise Visual selections and operators include a closed block as a whole: `dd` deletes it and `yy` copies it. Inserting opens the input location. Existing mappings and macros use these same synchronized folds.
+
+The bridge manages `foldmethod=manual`, `foldminlines=0`, and the active window's fold definitions/levels for Obsidian notes. Neovim fold providers and arbitrary `zf`/`zd` fold definitions are not synchronized back into Obsidian; use the host's foldable blocks. Ordinary `j`/`k` still count source lines outside folds; wrapped screen-line motions continue to depend on the estimated Neovim window size.
 
 ### Blockwise selection
 
@@ -183,7 +193,7 @@ For a lazy.nvim plugin that requires Neovim windows, use `cond = not vim.g.obsid
 
 ### Settings managed by the bridge
 
-The plugin uses managed `acwrite` buffers named `obsidian://…`. Each file has one buffer, shared by its editor panes. Switching notes, rebuilding an editor, or renaming a file preserves that buffer and its undo history; each pane retains its own cursor. Buffers remain cached until the file is deleted or Neovim stops. These note buffers keep `bufhidden=hide`, `swapfile=false`, and `undofile=false`. The bridge enables `hidden`, disables `autowrite`/`autowriteall`, and starts with ShaDa disabled because Obsidian owns note paths and saving. Other user options are left intact. Restarting resets Neovim’s undo history and registers; it preserves text already synchronized to Obsidian.
+The plugin uses managed `acwrite` buffers named `obsidian://…`. Each file has one buffer, shared by its editor panes. Switching notes, rebuilding an editor, or renaming a file preserves that buffer and its undo history; each pane retains its own cursor. Buffers remain cached until the file is deleted or Neovim stops. These note buffers keep `bufhidden=hide`, `swapfile=false`, and `undofile=false`. The bridge enables `hidden`, disables `autowrite`/`autowriteall`, and starts with ShaDa disabled because Obsidian owns note paths and saving. It manages the active window's folds as described above. Other user options are left intact. Restarting resets Neovim’s undo history and registers; it preserves text already synchronized to Obsidian.
 
 ## Current limits
 
@@ -192,7 +202,7 @@ The plugin integrates Neovim editing with Obsidian. UI and plugin compatibility 
 - All ordinary typing, including insert-mode typing, goes through Neovim. Obsidian autocomplete, automatic bracket insertion, and other plugins’ key handlers may behave differently. Conflicting Obsidian shortcuts may need to be unbound.
 - Use Obsidian to open, switch, and close notes. Your configured plugins load, but Neovim window/tab layouts, terminal buffers, floating windows, Telescope, completion menus, and `:edit`/`:split`/`:buffer` navigation are not integrated. Some plugins skip managed `acwrite` buffers or require file-read events that these virtual notes do not emit; loading a plugin does not guarantee it can attach to a note.
 - Characterwise, linewise, and blockwise Visual selections are displayed. Live Preview can hide Markdown syntax that has no visible text to highlight. Mouse selection is synchronized as a cursor position; use `v`/`V`/`Ctrl+V` for visual editing.
-- In editing view, unmapped `j`/`k` operate on document lines. Custom mappings to `gj`/`gk` use Neovim's internal screen lines. Switching files or panes reapplies the destination editor's last visible size before its first key. The Neovim window size is estimated from the editor, so wrapped-line motions, folds, and scrolling do not exactly match Obsidian’s Live Preview layout.
+- In editing view, unmapped `j`/`k` operate on document lines, counting a closed fold as one line. Custom mappings to `gj`/`gk` use Neovim's internal screen lines. Switching files or panes reapplies the destination editor's last visible size before its first key. The Neovim window size is estimated from the editor, so wrapped-line motions and page distances do not exactly match Obsidian’s Live Preview layout.
 - Clipboard shortcuts depend on the mode; see the shortcut table above. Cmd shortcuts stay with Obsidian. Vim registers are separate from native clipboard operations.
 - IME composition is left to CodeMirror and synchronized after composition commits. Japanese IME, dead-key layouts, and pop-out windows need manual verification in Obsidian. The command-line display currently lives in the main window.
 - Text changes synchronize separately from cursor and mode updates. Host edits use changed ranges; Neovim emits patches for changed lines, including background buffers. Concurrent host edits are rebased against arriving Neovim changes and retried if their buffer version is stale. Overlapping edits follow CodeMirror's change-mapping rules; this is not a collaborative editing conflict UI. Initial loading and reconciliation after a whole-editor replacement still inspect the full note.

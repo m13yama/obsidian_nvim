@@ -1,5 +1,5 @@
 import { ChangeSet, Text } from "@codemirror/state";
-import { NeovimSession, type EditorDocument, type NavigationDirection, type NeovimChanges, type NeovimState, type SessionOptions } from "../neovim/session";
+import { NeovimSession, type EditorDocument, type FoldRange, type NavigationDirection, type NeovimChanges, type NeovimState, type SessionOptions } from "../neovim/session";
 import { asError } from "../neovim/rpc";
 import { FileBuffer, bufferEdits, documentDiff } from "./document";
 import { byteToUtf16, utf16ToByte } from "./text";
@@ -13,6 +13,7 @@ export interface EditorPort {
   applyText(before: Text, changes: ChangeSet, after: Text): void;
   setConnected(connected: boolean): void;
   save(): Promise<void>;
+  folds?(): FoldRange[];
 }
 
 export interface StatusDetails {
@@ -36,9 +37,14 @@ interface Binding {
   file: FileBuffer;
   cursor: number;
   revision: number;
+  sentFolds?: string;
 }
 
 interface CursorIntent { text: Text; head: number; revision: number }
+
+function foldSignature(folds: FoldRange[] | undefined): string | undefined {
+  return folds && JSON.stringify(folds.map(({ from, to, closed }) => [from, to, closed]));
+}
 
 /** Files own buffers/undo; editor bindings own selection and focus. */
 export class EditorController {
@@ -183,6 +189,7 @@ export class EditorController {
       for (let retries = 0; retries < 100; retries++) {
         await this.flush(session, binding.file);
         if (!this.live(binding) || binding.revision !== revision) return;
+        await this.syncFolds(session, binding);
         if (await session.moveCursor(binding.file.id, this.cursor(binding), revision, port.id, binding.file.tick)) return;
       }
       throw new Error("The cursor could not be synchronized with the changing note.");
@@ -190,6 +197,13 @@ export class EditorController {
   }
 
   currentText(port: EditorPort): Text | undefined { return this.bindings.get(port.id)?.file.text; }
+
+  foldsApplied(port: EditorPort, folds: FoldRange[]): void {
+    const binding = this.bindings.get(port.id);
+    // Cache what Neovim actually knows, rather than newly parsed host folds.
+    // New headings created by an edit must still be synchronized before input.
+    if (binding) binding.sentFolds = foldSignature(folds);
+  }
 
   currentState(port: EditorPort, state: NeovimState): boolean {
     const binding = this.bindings.get(port.id);
@@ -315,11 +329,14 @@ export class EditorController {
 
   private async ensureActive(session: NeovimSession, binding: Binding, cursor: CursorIntent): Promise<void> {
     await this.flush(session, binding.file);
-    if (!this.live(binding) || this.activePort === binding.port.id) return;
+    if (!this.live(binding)) return;
+    if (this.activePort === binding.port.id) { await this.syncFolds(session, binding); return; }
     this.activePort = binding.port.id;
     for (let retries = 0; retries < 100; retries++) {
       if (!this.live(binding)) return;
-      if (await session.activate({ id: binding.file.id, name: binding.file.name, text: "", cursor: this.cursor(binding, cursor), revision: cursor.revision }, binding.port.id, binding.file.tick)) {
+      const folds = binding.port.folds?.();
+      binding.sentFolds = foldSignature(folds);
+      if (await session.activate({ id: binding.file.id, name: binding.file.name, text: "", cursor: this.cursor(binding, cursor), revision: cursor.revision, folds }, binding.port.id, binding.file.tick)) {
         // Apply this pane's size before the first key. The initial observer or
         // focus notification often arrived before activation completed.
         const size = this.sizes.get(binding.port.id);
@@ -329,6 +346,21 @@ export class EditorController {
       await this.flush(session, binding.file);
     }
     throw new Error("The active note could not be synchronized with Neovim.");
+  }
+
+  private async syncFolds(session: NeovimSession, binding: Binding): Promise<void> {
+    if (!binding.port.folds || this.activePort !== binding.port.id) return;
+    for (let retries = 0; retries < 100; retries++) {
+      if (!this.live(binding)) return;
+      const folds = binding.port.folds(), signature = foldSignature(folds);
+      if (signature === binding.sentFolds) return;
+      // Record before RPC: its state notification can arrive before the reply.
+      binding.sentFolds = signature;
+      if (await session.syncFolds(binding.file.id, binding.port.id, binding.revision, binding.file.tick, folds)) return;
+      binding.sentFolds = undefined;
+      await this.flush(session, binding.file);
+    }
+    throw new Error("The folds could not be synchronized with the changing note.");
   }
 
   private enqueue(action: (session: NeovimSession) => Promise<unknown>): void {

@@ -1,4 +1,5 @@
 import { BLOCK_SELECTION_LUA } from "./block-selection";
+import { FOLDS_LUA } from "./folds";
 
 /** Runs inside Neovim. Note text lives in managed acwrite buffers, never a vault file. */
 export const BRIDGE_LUA = String.raw`
@@ -14,6 +15,7 @@ vim.o.autowrite = false
 vim.o.autowriteall = false
 
 ${BLOCK_SELECTION_LUA}
+${FOLDS_LUA}
 
 function M.setup_navigation()
   for key, direction in pairs({ j = 'down', k = 'up', l = 'right', p = 'editor' }) do
@@ -46,9 +48,21 @@ function M.emit(scroll)
   local buf = api.nvim_get_current_buf()
   local entry = M.buffers[buf]
   if not entry then return end
+  -- Vertical motions already land on the fold's first line. A command that
+  -- explicitly targets an interior line (e.g. 50G or a mark) must reveal it.
+  local row = api.nvim_win_get_cursor(0)[1]
+  local closed = M.fold_ranges and vim.fn.foldclosed(row) or -1
+  local mode = api.nvim_get_mode().mode
+  if closed >= 0 and row > closed and mode == 'n' then
+    if M.last_mode == 'V' or M.last_mode == 'v' or M.last_mode == string.char(22) then
+      api.nvim_win_set_cursor(0, { closed, 0 })
+    else
+      vim.cmd('silent normal! zv')
+    end
+  end
+  M.last_mode = mode
   local anchor = vim.fn.getpos('v')
   local cursor = vim.fn.getpos('.')
-  local mode = api.nvim_get_mode().mode
   local screen_column = display_span(cursor)
   local state = {
     id = entry.id,
@@ -62,6 +76,7 @@ function M.emit(scroll)
     screenColumn = screen_column + 1,
     recording = vim.fn.reg_recording(),
     scroll = scroll,
+    folds = M.fold_state(),
   }
   if mode == string.char(22) or mode == string.char(19) then
     state.blockSelection = block_selection(anchor, cursor)
@@ -82,6 +97,8 @@ api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI', 'ModeChanged', 'TextCha
 
 local function set_cursor(cursor)
   local row = math.max(1, math.min(cursor[1], api.nvim_buf_line_count(0)))
+  local folded = M.fold_ranges and vim.fn.foldclosed(row) or -1
+  if folded >= 0 then row = folded end
   local line = api.nvim_buf_get_lines(0, row - 1, row, true)[1] or ''
   api.nvim_win_set_cursor(0, { row, math.max(0, math.min(cursor[2], #line)) })
 end
@@ -115,6 +132,7 @@ function M.open(id, lines, name)
   changed(buf, { { first = 0, last = 1, lines = lines } }, nil, true)
   api.nvim_buf_attach(buf, false, {
     on_lines = function(_, _, _, first, last, new_last)
+      if M.fold_buf == buf then M.move_fold_ranges(first, last, new_last) end
       local edit = { first = first, last = last, lines = api.nvim_buf_get_lines(buf, first, new_last, true) }
       if entry.collecting then table.insert(entry.collecting, edit)
       else changed(buf, { edit }) end
@@ -133,19 +151,23 @@ function M.open(id, lines, name)
   })
   -- FileType hooks run in this note's context, including when initializing a
   -- background view. They may edit the buffer; its listener is already attached.
-  api.nvim_buf_call(buf, function() vim.bo[buf].filetype = 'markdown' end)
+  api.nvim_buf_call(buf, function()
+    vim.bo[buf].filetype = 'markdown'
+    M.setup_fold_keys()
+  end)
   vim.bo[buf].buftype = 'acwrite'
   vim.bo[buf].bufhidden = 'hide'
   vim.bo[buf].swapfile = false
   vim.bo[buf].undofile = false
 end
 
-function M.activate(id, cursor, revision, view, tick)
+function M.activate(id, cursor, revision, view, tick, folds)
   local buf = M.ids[id]
   if type(tick) == 'number' and api.nvim_buf_get_changedtick(buf) ~= tick then return false end
   M.view = view
   M.revision = revision
   api.nvim_set_current_buf(buf)
+  M.set_folds(folds)
   set_cursor(cursor)
   M.schedule()
   return true

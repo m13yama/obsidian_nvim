@@ -7,6 +7,8 @@ import { toNeovimKey, toNeovimUndoKey } from "./keys";
 import { byteToUtf16, nextChar, utf16ToByte } from "./text";
 import { cursorDecorations, usesBlockCursor } from "./cursor";
 import { blockSelectionMarkers } from "./block-selection";
+import { foldedRanges, syntaxTree } from "@codemirror/language";
+import { editorFolds, foldEffects, visibleFoldPosition } from "./folds";
 
 export const fromNeovim = Annotation.define<boolean>();
 let nextEditorId = 1;
@@ -35,6 +37,7 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
     private resizeObserver: ResizeObserver;
     private unregisterKeys?: () => void;
     private blockRows: BlockSelectionRow[] = [];
+    private foldCache?: { doc: Text; tree: unknown; closed: unknown; ranges: ReturnType<typeof editorFolds> };
     decorations: DecorationSet = Decoration.none;
 
     get blockSelection(): readonly BlockSelectionRow[] {
@@ -84,6 +87,14 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
       };
     }
 
+    folds(): ReturnType<typeof editorFolds> {
+      const state = this.view.state, tree = syntaxTree(state), closed = foldedRanges(state);
+      if (!this.foldCache || this.foldCache.doc !== state.doc || this.foldCache.tree !== tree || this.foldCache.closed !== closed) {
+        this.foldCache = { doc: state.doc, tree, closed, ranges: editorFolds(state) };
+      }
+      return this.foldCache.ranges;
+    }
+
     update(update: ViewUpdate): void {
       // TextFileView clears its data and temporarily creates an empty editor
       // while unloading a note. That editor is not an edit to the old file.
@@ -122,7 +133,8 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
       for (const transaction of hostTransactions) {
         if (transaction.docChanged) controller.hostChanged(this, transaction.startState.doc, transaction.changes);
       }
-      const hostChange = hostTransactions.some((transaction) => transaction.docChanged || transaction.selection);
+      const hostChange = hostTransactions.some((transaction) => transaction.docChanged || transaction.selection ||
+        foldedRanges(transaction.startState) !== foldedRanges(transaction.state));
       if (hostChange) {
         this.revision++;
         this.blockRows = [];
@@ -160,7 +172,8 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
           const line = doc.line(Math.max(1, Math.min(row, doc.lines)));
           return line.from + byteToUtf16(line.text, byte);
         };
-        const head = position(state.cursor);
+        const closed: [number, number][] = state.folds?.filter((fold) => fold.closed).map((fold) => [fold.from, fold.to]) ?? [];
+        const head = visibleFoldPosition(this.view.state, position(state.cursor), closed);
         const anchor = position(state.anchor);
         let selection = EditorSelection.cursor(head);
         if (state.mode === "v") {
@@ -170,7 +183,10 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
             : EditorSelection.range(next(anchor), head);
         } else if (state.mode === "V") {
           const first = doc.lineAt(Math.min(anchor, head));
-          const last = doc.lineAt(Math.max(anchor, head));
+          let last = doc.lineAt(Math.max(anchor, head));
+          for (const [from, to] of closed) {
+            if (from <= last.number && last.number <= to) last = doc.line(Math.min(to, doc.lines));
+          }
           const end = Math.min(doc.length, last.to + 1);
           selection = head >= anchor ? EditorSelection.range(first.from, end) : EditorSelection.range(end, first.from);
         }
@@ -180,10 +196,14 @@ export function neovimExtension(controller: EditorController, host: EditorHost):
         this.view.dispatch({
           selection: EditorSelection.create([selection]),
           annotations: [fromNeovim.of(true), Transaction.addToHistory.of(false)],
-          effects: this.view.hasFocus && state.scroll === "center" ? EditorView.scrollIntoView(head, { y: "center" }) : [],
+          effects: [
+            ...(state.folds ? foldEffects(this.view.state, closed) : []),
+            ...(this.view.hasFocus && state.scroll === "center" ? [EditorView.scrollIntoView(head, { y: "center" })] : []),
+          ],
           // Repeated status notifications must not replace a pending zz scroll.
           scrollIntoView: this.view.hasFocus && cursorMoved,
         });
+        if (state.folds) controller.foldsApplied(this, state.folds);
       });
     }
 

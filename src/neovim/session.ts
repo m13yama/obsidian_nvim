@@ -34,7 +34,10 @@ export interface NeovimState {
   recording: string;
   scroll?: "center";
   blockSelection?: BlockSelectionRow[];
+  folds?: FoldRange[];
 }
+
+export interface FoldRange { from: number; to: number; closed: boolean }
 
 export interface BufferEdit {
   start: [number, number];
@@ -62,6 +65,7 @@ export interface EditorDocument {
   text: string;
   cursor: [number, number];
   name: string;
+  folds?: FoldRange[];
 }
 
 export interface SessionOptions {
@@ -175,7 +179,7 @@ export class NeovimSession {
   async activate(document: EditorDocument, view = document.id, tick?: number): Promise<boolean> {
     await this.open(document);
     if (this.activeId !== undefined && (this.activeId !== document.id || this.activeView !== view)) await this.input("<Esc>");
-    const accepted = await this.lua("activate", [document.id, document.cursor, document.revision, view, tick ?? null]) as boolean;
+    const accepted = await this.lua("activate", [document.id, document.cursor, document.revision, view, tick ?? null, document.folds ?? null]) as boolean;
     if (!accepted) return false;
     this.activeId = document.id;
     this.activeView = view;
@@ -188,6 +192,10 @@ export class NeovimSession {
 
   async moveCursor(id: number, cursor: [number, number], revision = 0, view = id, tick?: number): Promise<boolean> {
     return await this.lua("cursor", [id, cursor, revision, view, tick ?? null]) as boolean;
+  }
+
+  async syncFolds(id: number, view: number, revision: number, tick: number, folds: FoldRange[]): Promise<boolean> {
+    return await this.lua("folds", [id, view, revision, tick, folds]) as boolean;
   }
 
   async rename(id: number, name: string): Promise<void> { await this.lua("rename", [id, name]); }

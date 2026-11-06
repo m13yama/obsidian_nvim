@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.19 — Beta — 2026-11-06
+
+- Synchronize Obsidian fold boundaries and open/closed states with Neovim before input. Normal vertical motions, counts, page motions, and macros preserve closed blocks; searches and explicit line jumps reveal their destination.
+- Add Normal-mode Enter to toggle the current fold in Source mode and Live Preview. Preserve custom Enter mappings, Insert-mode newlines, and command-line confirmation.
+- Keep nested folds and each pane's folds independent. Support mouse folding, `zo`/`zc`/`za`/`zR`/`zM`, linewise Visual selection, and whole-fold operators. Update fold positions after edits and recognize newly created headings.
+
+Validated with real Neovim and CodeMirror regression tests for folding, the production build, and the existing test suite. In an isolated Obsidian 1.15.0 vault, verified closed-block movement and Enter toggling in Source mode and Live Preview without changing note text. Also verified MathJax style reload updates rendered formulas while preserving reading-view heading/list folds and their DOM.
+
+To upgrade, replace `main.js`, `manifest.json`, and `styles.css`, preserve `data.json`, and restart Obsidian. Alternatively, extract the ZIP into your vault's `.obsidian/plugins/` directory.
+
 ## 0.0.18 — Beta — 2026-10-31
 
 - Add **Neovim: Open command palette**, assigned to `Ctrl+Shift+P` by default. Give it priority in note and sidebar scopes and follow hotkey changes, including while Neovim or Vim pane navigation is disabled.
